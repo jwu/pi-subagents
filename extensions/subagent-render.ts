@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import type { AgentProgress } from './subagent-executor.ts';
 
 export interface SubagentCallArgs {
@@ -62,12 +63,59 @@ function indent(text: string, spaces: number): string {
     .join('\n');
 }
 
+function shortenPath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const home = homedir();
+  return value.startsWith(`${home}/`) ? `~/${value.slice(home.length + 1)}` : value;
+}
+
+function quote(value: string | undefined): string {
+  return value ? JSON.stringify(value) : '';
+}
+
+function stringArg(args: Record<string, unknown>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function formatToolTitle(name: string, args: Record<string, unknown>): string {
+  switch (name) {
+    case 'ls':
+      return `${name} ${quote(shortenPath(args.path ?? '.'))}`.trimEnd();
+    case 'read':
+    case 'write':
+    case 'edit':
+      return `${name} ${quote(shortenPath(args.path ?? args.file_path))}`.trimEnd();
+    case 'grep': {
+      const pattern = stringArg(args, 'pattern');
+      const target = shortenPath(args.path);
+      return `${name} ${quote(pattern)}${target ? ` in ${quote(target)}` : ''}`.trimEnd();
+    }
+    case 'find': {
+      const pattern = stringArg(args, 'pattern');
+      const target = shortenPath(args.path);
+      return `${name} ${quote(pattern)}${target ? ` in ${quote(target)}` : ''}`.trimEnd();
+    }
+    case 'webfetch':
+      return `${name} ${quote(stringArg(args, 'url'))}`.trimEnd();
+    case 'bash':
+      return `${name} ${quote(stringArg(args, 'command'))}`.trimEnd();
+    case 'subagent': {
+      const agent = stringArg(args, 'agent');
+      const task = stringArg(args, 'task');
+      return `${name} ${agent ?? ''}${task ? ` ${quote(preview(task, 60))}` : ''}`.trimEnd();
+    }
+    default: {
+      const values = Object.values(args).filter((value) => typeof value === 'string') as string[];
+      return `${name}${values.length > 0 ? ` ${quote(preview(values[0], 80))}` : ''}`;
+    }
+  }
+}
+
 function formatToolLines(progress: AgentProgress, options: RenderTextOptions): string[] {
   const lines: string[] = [];
   for (const tool of progress.tools) {
-    lines.push(
-      `${tool.status === 'running' ? '▸' : ' '} ${tool.name} ${JSON.stringify(tool.args)}`,
-    );
+    lines.push(`${tool.status === 'running' ? '▸' : ' '} ${formatToolTitle(tool.name, tool.args)}`);
     if (options.expanded && tool.nested) {
       lines.push(indent(formatSubagentResultText(tool.nested, { expanded: false }), 2));
     }

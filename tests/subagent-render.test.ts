@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { homedir } from 'node:os';
 import {
   contextUsageSeverity,
   formatSubagentCall,
@@ -87,17 +88,37 @@ describe('subagent rendering text', () => {
       { expanded: true },
     );
 
-    expect(text).toContain('▸ subagent {"agent":"researcher"}');
+    expect(text).toContain('▸ subagent researcher');
     expect(text).toContain('  ▸ researcher (anthropic/claude-haiku-4-5) — 1 tools · 1s');
-    expect(text).toContain('    webfetch {"url":"https://example.com"}');
+    expect(text).toContain('    webfetch "https://example.com"');
+  });
+
+  test('formats tool logs like normal tool titles instead of JSON blobs', () => {
+    const text = formatSubagentResultText(
+      {
+        ...result,
+        tools: [
+          {
+            id: '1',
+            name: 'ls',
+            args: { path: `${homedir()}/dev/playground/pi-playground` },
+            status: 'done',
+          },
+        ],
+      },
+      { expanded: false },
+    );
+
+    expect(text).toContain('  ls "~/dev/playground/pi-playground"');
+    expect(text).not.toContain('{"path":');
   });
 
   test('formats collapsed result with status, tool logs, summary, and usage', () => {
     const text = formatSubagentResultText(result, { expanded: false });
 
     expect(text).toContain('✓ scout (anthropic/claude-haiku-4-5) — 2 tools · 2s');
-    expect(text).toContain('  read {"path":"README.md"}');
-    expect(text).toContain('▸ grep {"pattern":"TODO"}');
+    expect(text).toContain('  read "README.md"');
+    expect(text).toContain('▸ grep "TODO"');
     expect(text).toContain('First paragraph.\nSecond paragraph.\nThird paragraph.');
     expect(text).toContain('↑1200 ↓345 R10 W20 $0.0123 70%/100000');
   });
