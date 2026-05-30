@@ -1,5 +1,5 @@
-import { homedir } from 'node:os';
 import type { AgentProgress } from './subagent-executor.ts';
+import { numberArg, preview, shortenPath, stringArg } from './tool-args.ts';
 
 export interface SubagentCallArgs {
   agent?: string;
@@ -39,10 +39,6 @@ export function contextUsageSeverity(usage: {
   if (percent >= 0.9) return 'error';
   if (percent >= 0.7) return 'warning';
   return 'dim';
-}
-
-function preview(text: string, length: number): string {
-  return text.length > length ? `${text.slice(0, length)}...` : text;
 }
 
 function elapsedSeconds(ms: number): number {
@@ -85,24 +81,8 @@ function indent(text: string, spaces: number): string {
     .join('\n');
 }
 
-function shortenPath(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const home = homedir();
-  return value.startsWith(`${home}/`) ? `~/${value.slice(home.length + 1)}` : value;
-}
-
 function quote(value: string | undefined): string {
   return value ? JSON.stringify(value) : '';
-}
-
-function stringArg(args: Record<string, unknown>, key: string): string | undefined {
-  const value = args[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function numberArg(args: Record<string, unknown>, key: string): number | undefined {
-  const value = args[key];
-  return typeof value === 'number' ? value : undefined;
 }
 
 function pathArg(args: Record<string, unknown>, fallback?: string): string {

@@ -1,4 +1,3 @@
-import { homedir } from 'node:os';
 import {
   getMarkdownTheme,
   keyHint,
@@ -17,6 +16,7 @@ import {
   formatUsage,
   type SubagentResultLine,
 } from './subagent-render.ts';
+import { numberArg, preview, shortenPath, stringArg } from './tool-args.ts';
 
 const SubagentParams = {
   type: 'object',
@@ -97,26 +97,6 @@ type CollapsedTheme = {
   fg: (name: ThemeColor, text: string) => string;
   bold: (text: string) => string;
 };
-
-function preview(text: string, length: number): string {
-  return text.length > length ? `${text.slice(0, length)}...` : text;
-}
-
-function shortenPath(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const home = homedir();
-  return value.startsWith(`${home}/`) ? `~/${value.slice(home.length + 1)}` : value;
-}
-
-function stringArg(args: Record<string, unknown>, key: string): string | undefined {
-  const value = args[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function numberArg(args: Record<string, unknown>, key: string): number | undefined {
-  const value = args[key];
-  return typeof value === 'number' ? value : undefined;
-}
 
 function styledPathArg(
   args: Record<string, unknown>,
