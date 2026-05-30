@@ -90,7 +90,7 @@ describe('subagent rendering text', () => {
 
     expect(text).toContain('▸ subagent researcher');
     expect(text).toContain('  ▸ researcher (anthropic/claude-haiku-4-5) — 1 tools · 1s');
-    expect(text).toContain('    webfetch "https://example.com"');
+    expect(text).toContain('    webfetch https://example.com');
   });
 
   test('formats tool logs like normal tool titles instead of JSON blobs', () => {
@@ -109,7 +109,7 @@ describe('subagent rendering text', () => {
       { expanded: false },
     );
 
-    expect(text).toContain('  ls "~/dev/playground/pi-playground"');
+    expect(text).toContain('  ls ~/dev/playground/pi-playground');
     expect(text).not.toContain('{"path":');
   });
 
@@ -134,13 +134,13 @@ describe('subagent rendering text', () => {
     );
 
     expect(text).toContain('▸ scout (anthropic/claude-haiku-4-5) — 2 tools · 90s');
-    expect(text).toContain('  read "README.md"');
-    expect(text).toContain('▸ grep "TODO"');
+    expect(text).toContain('  read README.md');
+    expect(text).toContain('▸ grep /TODO/ in .');
     expect(text).not.toContain('This should not be shown while running.');
     expect(text).toContain('16.4%/272k ↑99k ↓5.1k R401k $0.850');
   });
 
-  test('limits running tool logs to the latest 50 entries', () => {
+  test('limits collapsed running tool logs to the latest 20 entries', () => {
     const tools = Array.from({ length: 73 }, (_, index) => ({
       id: String(index),
       name: 'read',
@@ -157,18 +157,138 @@ describe('subagent rendering text', () => {
       { expanded: false },
     );
 
-    expect(text).toContain('  ... 23 earlier tools');
-    expect(text).not.toContain('file-22.md');
-    expect(text).toContain('file-23.md');
+    expect(text).toContain('  ... (53 earlier tool calls, to expand)');
+    expect(text).not.toContain('file-52.md');
+    expect(text).toContain('file-53.md');
     expect(text).toContain('file-72.md');
+  });
+
+  test('shows all running tool logs in expanded view', () => {
+    const tools = Array.from({ length: 73 }, (_, index) => ({
+      id: String(index),
+      name: 'read',
+      args: { path: `file-${index}.md` },
+      status: 'done' as const,
+    }));
+
+    const text = formatSubagentResultText(
+      {
+        ...result,
+        status: 'running',
+        tools,
+      },
+      { expanded: true },
+    );
+
+    expect(text).not.toContain('earlier tool calls, to expand');
+    expect(text).toContain('file-0.md');
+    expect(text).toContain('file-72.md');
+  });
+
+  test('keeps full long paths in text formatting without render width pressure', () => {
+    const text = formatSubagentResultText(
+      {
+        ...result,
+        tools: [
+          {
+            id: 'read-long',
+            name: 'read',
+            args: {
+              path: '~/dev/playground/pi-playground/.pi/npm/node_modules/pi-messenger/config/schema.ts',
+              offset: 1,
+              limit: 30,
+            },
+            status: 'done',
+          },
+        ],
+      },
+      { expanded: false },
+    );
+
+    expect(text).toContain(
+      '  read ~/dev/playground/pi-playground/.pi/npm/node_modules/pi-messenger/config/schema.ts:1-30',
+    );
+  });
+
+  test('formats built-in and common extension tool logs like their renderCall titles', () => {
+    const text = formatSubagentResultText(
+      {
+        ...result,
+        tools: [
+          {
+            id: 'read',
+            name: 'read',
+            args: { path: 'README.md', offset: 3, limit: 2 },
+            status: 'done',
+          },
+          { id: 'bash', name: 'bash', args: { command: 'bun test', timeout: 30 }, status: 'done' },
+          { id: 'edit', name: 'edit', args: { path: 'src/app.ts' }, status: 'done' },
+          { id: 'write', name: 'write', args: { path: 'src/new.ts' }, status: 'done' },
+          {
+            id: 'find',
+            name: 'find',
+            args: { pattern: '*.ts', path: 'src', limit: 5 },
+            status: 'done',
+          },
+          {
+            id: 'grep',
+            name: 'grep',
+            args: { pattern: 'TODO', path: 'src', glob: '*.ts', limit: 10 },
+            status: 'done',
+          },
+          { id: 'ls', name: 'ls', args: { path: 'src', limit: 3 }, status: 'done' },
+          {
+            id: 'webfetch',
+            name: 'webfetch',
+            args: { url: 'https://example.com', mode: 'text' },
+            status: 'done',
+          },
+          {
+            id: 'subagent',
+            name: 'subagent',
+            args: { agent: 'researcher', task: 'Investigate' },
+            status: 'done',
+          },
+        ],
+      },
+      { expanded: false },
+    );
+
+    expect(text).toContain('  read README.md:3-4');
+    expect(text).toContain('  $ bun test (timeout 30s)');
+    expect(text).toContain('  edit src/app.ts');
+    expect(text).toContain('  write src/new.ts');
+    expect(text).toContain('  find *.ts in src (limit 5)');
+    expect(text).toContain('  grep /TODO/ in src (*.ts) limit 10');
+    expect(text).toContain('  ls src (limit 3)');
+    expect(text).toContain('  webfetch https://example.com (text)');
+    expect(text).toContain('  subagent researcher "Investigate"');
+  });
+
+  test('limits collapsed output summary to 20 logical lines', () => {
+    const output = Array.from({ length: 25 }, (_, index) => `summary line ${index + 1}`).join('\n');
+    const text = formatSubagentResultText({ ...result, output }, { expanded: false });
+
+    expect(text).toContain('summary line 1');
+    expect(text).toContain('summary line 20');
+    expect(text).not.toContain('summary line 21');
+  });
+
+  test('does not stop collapsed output summary at three paragraphs', () => {
+    const output = Array.from({ length: 6 }, (_, index) => `paragraph ${index + 1}`).join('\n\n');
+    const text = formatSubagentResultText({ ...result, output }, { expanded: false });
+
+    expect(text).toContain('paragraph 1');
+    expect(text).toContain('paragraph 4');
+    expect(text).toContain('paragraph 6');
   });
 
   test('formats collapsed result with status, tool logs, summary, and usage', () => {
     const text = formatSubagentResultText(result, { expanded: false });
 
     expect(text).toContain('✓ scout (anthropic/claude-haiku-4-5) — 2 tools · 2s');
-    expect(text).toContain('  read "README.md"');
-    expect(text).toContain('▸ grep "TODO"');
+    expect(text).toContain('  read README.md');
+    expect(text).toContain('▸ grep /TODO/ in .');
     expect(text).toContain('\n\nFirst paragraph.\nSecond paragraph.\nThird paragraph.');
     expect(text).toContain('70.0%/100k ↑1.2k ↓345 R10 W20 $0.012');
   });

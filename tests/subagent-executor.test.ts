@@ -174,6 +174,70 @@ describe('runSubagent', () => {
     });
   });
 
+  test('uses aggregate usage from agent_end messages when available', async () => {
+    const result = await runSubagent({
+      agent: baseAgent,
+      task: 'Report usage',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-agent-end-usage',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'agent_end',
+            messages: [
+              {
+                role: 'assistant',
+                model: 'deepseek/deepseek-v4-flash',
+                usage: {
+                  input: 100,
+                  output: 20,
+                  cacheRead: 1000,
+                  cacheWrite: 0,
+                  totalTokens: 50,
+                  contextWindow: 100,
+                  cost: { total: 0.1 },
+                },
+                content: [{ type: 'text', text: 'tool turn' }],
+              },
+              {
+                role: 'assistant',
+                model: 'deepseek/deepseek-v4-flash',
+                usage: {
+                  input: 300,
+                  output: 40,
+                  cacheRead: 2000,
+                  cacheWrite: 5,
+                  totalTokens: 60,
+                  contextWindow: 100,
+                  cost: { total: 0.2 },
+                },
+                content: [{ type: 'text', text: 'final' }],
+              },
+            ],
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(result.model).toBe('deepseek/deepseek-v4-flash');
+    expect(result.usage).toEqual({
+      input: 400,
+      output: 60,
+      cacheRead: 3000,
+      cacheWrite: 5,
+      cost: 0.30000000000000004,
+      contextTokens: 60,
+      contextWindow: 100,
+    });
+  });
+
   test('attaches nested subagent progress to the launching tool from update events', async () => {
     const updates: any[] = [];
     const nested = {

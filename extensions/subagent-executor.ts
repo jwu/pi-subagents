@@ -1,4 +1,4 @@
-import { withFileMutationQueue } from '@earendil-works/pi-coding-agent';
+import { AuthStorage, ModelRegistry, withFileMutationQueue } from '@earendil-works/pi-coding-agent';
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -169,7 +169,25 @@ function textFromMessage(message: unknown): string | undefined {
   return undefined;
 }
 
-function usageFromMessage(message: unknown): Partial<AgentUsage> | undefined {
+type ContextWindowLookup = {
+  find: (provider: string, modelId: string) => { contextWindow?: number } | undefined;
+};
+
+function contextWindowFromMessage(
+  message: unknown,
+  modelRegistry?: ContextWindowLookup,
+): number | undefined {
+  if (!message || typeof message !== 'object' || !modelRegistry) return undefined;
+  const provider = (message as { provider?: unknown }).provider;
+  const model = (message as { model?: unknown }).model;
+  if (typeof provider !== 'string' || typeof model !== 'string') return undefined;
+  return modelRegistry.find(provider, model)?.contextWindow;
+}
+
+function usageFromMessage(
+  message: unknown,
+  modelRegistry?: ContextWindowLookup,
+): Partial<AgentUsage> | undefined {
   if (!message || typeof message !== 'object') return undefined;
   const usage = (message as { usage?: unknown }).usage;
   if (!usage || typeof usage !== 'object') return undefined;
@@ -186,7 +204,10 @@ function usageFromMessage(message: unknown): Partial<AgentUsage> | undefined {
     cacheWrite: typeof typed.cacheWrite === 'number' ? typed.cacheWrite : undefined,
     cost: typeof cost?.total === 'number' ? cost.total : undefined,
     contextTokens: typeof typed.totalTokens === 'number' ? typed.totalTokens : undefined,
-    contextWindow: typeof typed.contextWindow === 'number' ? typed.contextWindow : undefined,
+    contextWindow:
+      typeof typed.contextWindow === 'number'
+        ? typed.contextWindow
+        : contextWindowFromMessage(message, modelRegistry),
   };
 }
 
@@ -205,6 +226,48 @@ function updateUsage(target: AgentUsage, update: Partial<AgentUsage> | undefined
   target.cost += update.cost ?? 0;
   target.contextTokens = update.contextTokens ?? target.contextTokens;
   target.contextWindow = update.contextWindow ?? target.contextWindow;
+}
+
+function replaceUsage(target: AgentUsage, source: AgentUsage) {
+  target.input = source.input;
+  target.output = source.output;
+  target.cacheRead = source.cacheRead;
+  target.cacheWrite = source.cacheWrite;
+  target.cost = source.cost;
+  target.contextTokens = source.contextTokens;
+  target.contextWindow = source.contextWindow;
+}
+
+function usageFromMessages(
+  messages: unknown,
+  modelRegistry?: ContextWindowLookup,
+): AgentUsage | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  const aggregate = emptyUsage();
+  let sawUsage = false;
+
+  for (const message of messages) {
+    if (!message || typeof message !== 'object') continue;
+    if ((message as { role?: unknown }).role !== 'assistant') continue;
+    const update = usageFromMessage(message, modelRegistry);
+    if (!update) continue;
+    sawUsage = true;
+    updateUsage(aggregate, update);
+  }
+
+  return sawUsage ? aggregate : undefined;
+}
+
+function lastAssistantModel(messages: unknown): string | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (!message || typeof message !== 'object') continue;
+    if ((message as { role?: unknown }).role !== 'assistant') continue;
+    const model = modelFromMessage(message);
+    if (model) return model;
+  }
+  return undefined;
 }
 
 function buildTaskArgument(task: string, taskFilePath: string | undefined): string {
@@ -285,6 +348,10 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     }
 
     const pi = await resolvePi();
+    const modelRegistry = ModelRegistry.create(
+      AuthStorage.create(options.agentDir ? path.join(options.agentDir, 'auth.json') : undefined),
+      options.agentDir ? path.join(options.agentDir, 'models.json') : undefined,
+    );
     const args = [
       pi.entryPoint,
       '--mode',
@@ -357,8 +424,16 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       if (event.type === 'message_end' && event.message) {
         const text = textFromMessage(event.message);
         if (text !== undefined) output = text;
-        updateUsage(usage, usageFromMessage(event.message));
+        updateUsage(usage, usageFromMessage(event.message, modelRegistry));
         model = modelFromMessage(event.message) ?? model;
+        emit();
+        return;
+      }
+
+      if (event.type === 'agent_end') {
+        const aggregate = usageFromMessages(event.messages, modelRegistry);
+        if (aggregate) replaceUsage(usage, aggregate);
+        model = lastAssistantModel(event.messages) ?? model;
         emit();
       }
     };

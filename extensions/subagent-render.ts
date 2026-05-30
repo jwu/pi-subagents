@@ -9,9 +9,23 @@ export interface SubagentCallArgs {
 export interface RenderTextOptions {
   expanded: boolean;
   suppressOutput?: boolean;
+  expandHint?: string;
 }
 
-const TOOL_LOG_LIMIT = 50;
+export type SubagentResultLineKind = 'status' | 'tool' | 'hint' | 'usage' | 'output' | 'blank';
+
+export interface SubagentResultLine {
+  text: string;
+  kind: SubagentResultLineKind;
+  singleLine: boolean;
+  tool?: {
+    name: string;
+    args: Record<string, unknown>;
+    status: 'running' | 'done' | 'error';
+  };
+}
+
+const TOOL_LOG_LIMIT = 20;
 
 export type ContextUsageSeverity = 'dim' | 'warning' | 'error';
 
@@ -40,10 +54,10 @@ function stripCodeBlocks(markdown: string): string {
 
 function summaryText(markdown: string): string {
   return stripCodeBlocks(markdown)
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
+    .split('\n')
+    .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, 3)
+    .slice(0, 20)
     .join('\n');
 }
 
@@ -94,28 +108,60 @@ function stringArg(args: Record<string, unknown>, key: string): string | undefin
   return typeof value === 'string' ? value : undefined;
 }
 
+function numberArg(args: Record<string, unknown>, key: string): number | undefined {
+  const value = args[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function pathArg(args: Record<string, unknown>, fallback?: string): string {
+  return shortenPath(args.path ?? args.file_path) ?? fallback ?? '...';
+}
+
+function lineRange(args: Record<string, unknown>): string {
+  if (args.offset === undefined && args.limit === undefined) return '';
+  const startLine = numberArg(args, 'offset') ?? 1;
+  const limit = numberArg(args, 'limit');
+  const endLine = limit !== undefined ? startLine + limit - 1 : undefined;
+  return `:${startLine}${endLine !== undefined ? `-${endLine}` : ''}`;
+}
+
+function limitSuffix(args: Record<string, unknown>): string {
+  const limit = numberArg(args, 'limit');
+  return limit !== undefined ? ` (limit ${limit})` : '';
+}
+
 function formatToolTitle(name: string, args: Record<string, unknown>): string {
   switch (name) {
-    case 'ls':
-      return `${name} ${quote(shortenPath(args.path ?? '.'))}`.trimEnd();
     case 'read':
-    case 'write':
+      return `read ${pathArg(args)}${lineRange(args)}`;
+    case 'bash': {
+      const command = stringArg(args, 'command') ?? '';
+      const timeout = numberArg(args, 'timeout');
+      return `$ ${command}${timeout !== undefined ? ` (timeout ${timeout}s)` : ''}`;
+    }
     case 'edit':
-      return `${name} ${quote(shortenPath(args.path ?? args.file_path))}`.trimEnd();
-    case 'grep': {
-      const pattern = stringArg(args, 'pattern');
-      const target = shortenPath(args.path);
-      return `${name} ${quote(pattern)}${target ? ` in ${quote(target)}` : ''}`.trimEnd();
-    }
+      return `edit ${pathArg(args)}`;
+    case 'write':
+      return `write ${pathArg(args)}`;
     case 'find': {
-      const pattern = stringArg(args, 'pattern');
-      const target = shortenPath(args.path);
-      return `${name} ${quote(pattern)}${target ? ` in ${quote(target)}` : ''}`.trimEnd();
+      const pattern = stringArg(args, 'pattern') ?? '';
+      return `find ${pattern} in ${pathArg(args, '.')}${limitSuffix(args)}`;
     }
-    case 'webfetch':
-      return `${name} ${quote(stringArg(args, 'url'))}`.trimEnd();
-    case 'bash':
-      return `${name} ${quote(stringArg(args, 'command'))}`.trimEnd();
+    case 'grep': {
+      const pattern = stringArg(args, 'pattern') ?? '';
+      const glob = stringArg(args, 'glob');
+      const globSuffix = glob ? ` (${glob})` : '';
+      const limit = numberArg(args, 'limit');
+      const limitText = limit !== undefined ? ` limit ${limit}` : '';
+      return `grep /${pattern}/ in ${pathArg(args, '.')}${globSuffix}${limitText}`;
+    }
+    case 'ls':
+      return `ls ${pathArg(args, '.')}${limitSuffix(args)}`;
+    case 'webfetch': {
+      const url = stringArg(args, 'url') ?? '';
+      const mode = stringArg(args, 'mode');
+      return `webfetch ${url}${mode ? ` (${mode})` : ''}`.trimEnd();
+    }
     case 'subagent': {
       const agent = stringArg(args, 'agent');
       const task = stringArg(args, 'task');
@@ -128,19 +174,37 @@ function formatToolTitle(name: string, args: Record<string, unknown>): string {
   }
 }
 
-function formatToolLines(progress: AgentProgress, options: RenderTextOptions): string[] {
-  const lines: string[] = [];
-  const hiddenCount = Math.max(0, progress.tools.length - TOOL_LOG_LIMIT);
+function formatToolLineItems(
+  progress: AgentProgress,
+  options: RenderTextOptions,
+): SubagentResultLine[] {
+  const lines: SubagentResultLine[] = [];
+  const hiddenCount = options.expanded ? 0 : Math.max(0, progress.tools.length - TOOL_LOG_LIMIT);
   const visibleTools = progress.tools.slice(hiddenCount);
 
-  if (hiddenCount > 0) lines.push(`  ... ${hiddenCount} earlier tools`);
+  if (hiddenCount > 0) {
+    const expandHint = options.expandHint ?? 'to expand';
+    lines.push({
+      text: `  ... (${hiddenCount} earlier tool calls, ${expandHint})`,
+      kind: 'hint',
+      singleLine: true,
+    });
+  }
 
   for (const tool of visibleTools) {
-    lines.push(`${tool.status === 'running' ? '▸' : ' '} ${formatToolTitle(tool.name, tool.args)}`);
+    lines.push({
+      text: `${tool.status === 'running' ? '▸' : ' '} ${formatToolTitle(tool.name, tool.args)}`,
+      kind: 'tool',
+      singleLine: true,
+      tool: { name: tool.name, args: tool.args, status: tool.status },
+    });
     if ((options.expanded || progress.status === 'running') && tool.nested) {
-      lines.push(
-        indent(formatSubagentResultText(tool.nested, { expanded: false, suppressOutput: true }), 2),
-      );
+      for (const line of formatSubagentResultLines(tool.nested, {
+        expanded: false,
+        suppressOutput: true,
+      })) {
+        lines.push({ ...line, text: indent(line.text, 2) });
+      }
     }
   }
   return lines;
@@ -154,24 +218,41 @@ export function formatSubagentCall(
   return `subagent ${args.agent ?? '...'} ${preview(args.task ?? '...', 60)}`;
 }
 
-export function formatSubagentResultText(
+export function formatSubagentResultLines(
   progress: AgentProgress,
   options: RenderTextOptions,
-): string {
+): SubagentResultLine[] {
   const icon = progress.status === 'error' ? '✗' : progress.status === 'done' ? '✓' : '▸';
   const statusLine = `${icon} ${progress.agent}${progress.model ? ` (${progress.model})` : ''} — ${
     progress.tools.length
   } tools · ${elapsedSeconds(progress.elapsedMs)}s`;
-  const toolLines = formatToolLines(progress, options);
+  const toolLines = formatToolLineItems(progress, options);
   const usage = formatUsage(progress);
+  const lines: SubagentResultLine[] = [
+    { text: statusLine, kind: 'status', singleLine: false },
+    ...toolLines,
+  ];
 
   if (progress.status === 'running' || options.suppressOutput) {
-    return [statusLine, ...toolLines, usage].join('\n');
+    lines.push({ text: usage, kind: 'usage', singleLine: false });
+    return lines;
   }
 
   const output = options.expanded
     ? progress.output || '(no output)'
     : summaryText(progress.output) || '(no output)';
 
-  return [statusLine, ...toolLines, '', output, usage].join('\n');
+  lines.push({ text: '', kind: 'blank', singleLine: false });
+  lines.push({ text: output, kind: 'output', singleLine: false });
+  lines.push({ text: usage, kind: 'usage', singleLine: false });
+  return lines;
+}
+
+export function formatSubagentResultText(
+  progress: AgentProgress,
+  options: RenderTextOptions,
+): string {
+  return formatSubagentResultLines(progress, options)
+    .map((line) => line.text)
+    .join('\n');
 }

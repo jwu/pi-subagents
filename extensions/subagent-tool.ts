@@ -1,8 +1,11 @@
+import { homedir } from 'node:os';
 import {
   getMarkdownTheme,
+  keyHint,
   type AgentToolUpdateCallback,
   type ExtensionAPI,
   type ExtensionContext,
+  type ThemeColor,
 } from '@earendil-works/pi-coding-agent';
 import { Container, Markdown, Spacer, Text } from '@earendil-works/pi-tui';
 import type { AgentConfig } from './agent-loader.ts';
@@ -10,7 +13,8 @@ import { type AgentProgress, type AgentResult, runSubagent } from './subagent-ex
 import {
   contextUsageSeverity,
   formatSubagentCall,
-  formatSubagentResultText,
+  formatSubagentResultLines,
+  type SubagentResultLine,
 } from './subagent-render.ts';
 
 const SubagentParams = {
@@ -88,6 +92,158 @@ function isPastMaxDepth(env: RecursionEnv): boolean {
   return depth !== undefined && maxDepth !== undefined && depth > maxDepth;
 }
 
+type CollapsedTheme = {
+  fg: (name: ThemeColor, text: string) => string;
+  bold: (text: string) => string;
+};
+
+function preview(text: string, length: number): string {
+  return text.length > length ? `${text.slice(0, length)}...` : text;
+}
+
+function shortenPath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const home = homedir();
+  return value.startsWith(`${home}/`) ? `~/${value.slice(home.length + 1)}` : value;
+}
+
+function stringArg(args: Record<string, unknown>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numberArg(args: Record<string, unknown>, key: string): number | undefined {
+  const value = args[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function styledPathArg(
+  args: Record<string, unknown>,
+  theme: CollapsedTheme,
+  fallback?: string,
+): string {
+  const path = shortenPath(args.path ?? args.file_path) ?? fallback;
+  return path ? theme.fg('accent', path) : theme.fg('toolOutput', '...');
+}
+
+function styledLineRange(args: Record<string, unknown>, theme: CollapsedTheme): string {
+  if (args.offset === undefined && args.limit === undefined) return '';
+  const startLine = numberArg(args, 'offset') ?? 1;
+  const limit = numberArg(args, 'limit');
+  const endLine = limit !== undefined ? startLine + limit - 1 : undefined;
+  return theme.fg('warning', `:${startLine}${endLine !== undefined ? `-${endLine}` : ''}`);
+}
+
+function styledLimitSuffix(args: Record<string, unknown>, theme: CollapsedTheme): string {
+  const limit = numberArg(args, 'limit');
+  return limit !== undefined ? theme.fg('toolOutput', ` (limit ${limit})`) : '';
+}
+
+function styledToolTitle(
+  name: string,
+  args: Record<string, unknown>,
+  theme: CollapsedTheme,
+): string {
+  switch (name) {
+    case 'read':
+      return `${theme.fg('toolTitle', theme.bold('read'))} ${styledPathArg(args, theme)}${styledLineRange(args, theme)}`;
+    case 'bash': {
+      const command = stringArg(args, 'command') ?? '';
+      const timeout = numberArg(args, 'timeout');
+      const timeoutSuffix =
+        timeout !== undefined ? theme.fg('muted', ` (timeout ${timeout}s)`) : '';
+      return `${theme.fg('toolTitle', theme.bold(`$ ${command || '...'}`))}${timeoutSuffix}`;
+    }
+    case 'edit':
+      return `${theme.fg('toolTitle', theme.bold('edit'))} ${styledPathArg(args, theme)}`;
+    case 'write':
+      return `${theme.fg('toolTitle', theme.bold('write'))} ${styledPathArg(args, theme)}`;
+    case 'find': {
+      const pattern = stringArg(args, 'pattern') ?? '';
+      return `${theme.fg('toolTitle', theme.bold('find'))} ${theme.fg('accent', pattern)}${theme.fg('toolOutput', ` in ${shortenPath(args.path) ?? '.'}`)}${styledLimitSuffix(args, theme)}`;
+    }
+    case 'grep': {
+      const pattern = stringArg(args, 'pattern') ?? '';
+      const glob = stringArg(args, 'glob');
+      const limit = numberArg(args, 'limit');
+      let text = `${theme.fg('toolTitle', theme.bold('grep'))} ${theme.fg('syntaxKeyword', `/${pattern}/`)}${theme.fg('dim', ' in ')}${theme.fg('accent', shortenPath(args.path) ?? '.')}`;
+      if (glob) text += theme.fg('muted', ` (${glob})`);
+      if (limit !== undefined) text += theme.fg('toolOutput', ` limit ${limit}`);
+      return text;
+    }
+    case 'ls':
+      return `${theme.fg('toolTitle', theme.bold('ls'))} ${styledPathArg(args, theme, '.')}${styledLimitSuffix(args, theme)}`;
+    case 'webfetch': {
+      const url = stringArg(args, 'url') ?? '';
+      const mode = stringArg(args, 'mode');
+      return `${theme.fg('toolTitle', theme.bold('webfetch'))} ${theme.fg('accent', url)}${mode ? theme.fg('toolOutput', ` (${mode})`) : ''}`;
+    }
+    case 'subagent': {
+      const agent = stringArg(args, 'agent') ?? '';
+      const task = stringArg(args, 'task');
+      return `${theme.fg('toolTitle', theme.bold('subagent'))} ${theme.fg('accent', agent)}${task ? ` ${theme.fg('dim', JSON.stringify(preview(task, 60)))}` : ''}`.trimEnd();
+    }
+    default: {
+      const values = Object.values(args).filter((value) => typeof value === 'string') as string[];
+      return `${theme.fg('toolTitle', theme.bold(name))}${values.length > 0 ? ` ${theme.fg('dim', JSON.stringify(preview(values[0], 80)))}` : ''}`;
+    }
+  }
+}
+
+function styledCollapsedLine(
+  line: SubagentResultLine,
+  details: AgentResult | AgentProgress,
+  theme: CollapsedTheme,
+): string {
+  if (line.kind === 'status')
+    return theme.fg(details.status === 'error' ? 'error' : 'success', line.text);
+  if (line.kind === 'hint') return theme.fg('dim', line.text);
+  if (line.kind === 'tool' && line.tool) {
+    const prefix = line.tool.status === 'running' ? theme.fg('warning', '▸') : ' ';
+    return `${prefix} ${styledToolTitle(line.tool.name, line.tool.args, theme)}`;
+  }
+  if (line.kind === 'usage') return theme.fg(contextUsageSeverity(details.usage), line.text);
+  return line.text;
+}
+
+function styledSubagentCall(
+  args: SubagentParamsType,
+  theme: CollapsedTheme,
+  expanded: boolean,
+): string {
+  const title = `${theme.fg('toolTitle', theme.bold('subagent'))} ${theme.fg('accent', args.agent ?? '...')}`;
+  if (expanded) return `${title}\n${theme.fg('dim', args.task ?? '...')}`;
+  return `${title} ${theme.fg('dim', formatSubagentCall(args).replace(/^subagent \S+ /, ''))}`;
+}
+
+function renderResultLines(
+  details: AgentResult | AgentProgress,
+  theme: CollapsedTheme,
+  options: { expanded: boolean; suppressOutput?: boolean; expandHint?: string },
+): Container {
+  const container = new Container();
+  for (const line of formatSubagentResultLines(details, options)) {
+    if (line.kind === 'blank') {
+      container.addChild(new Spacer(1));
+      continue;
+    }
+
+    const text = styledCollapsedLine(line, details, theme);
+    container.addChild(new Text(text, 0, 0));
+  }
+  return container;
+}
+
+function renderCollapsedResult(
+  details: AgentResult | AgentProgress,
+  theme: CollapsedTheme,
+): Container {
+  return renderResultLines(details, theme, {
+    expanded: false,
+    expandHint: keyHint('app.tools.expand', 'to expand'),
+  });
+}
+
 export function registerSubagentTool(
   pi: RegisterablePi,
   options: RegisterSubagentToolOptions,
@@ -136,17 +292,7 @@ export function registerSubagentTool(
 
     renderCall(args, theme, context) {
       const typedArgs = args as SubagentParamsType;
-      if (context.expanded) {
-        return new Text(formatSubagentCall(typedArgs, { expanded: true }), 0, 0);
-      }
-      return new Text(
-        `${theme.fg('toolTitle', theme.bold('subagent'))} ${theme.fg(
-          'accent',
-          typedArgs.agent ?? '...',
-        )} ${theme.fg('dim', formatSubagentCall(typedArgs).replace(/^subagent \S+ /, ''))}`,
-        0,
-        0,
-      );
+      return new Text(styledSubagentCall(typedArgs, theme, context.expanded), 0, 0);
     },
 
     renderResult(result, options, theme) {
@@ -157,23 +303,16 @@ export function registerSubagentTool(
       }
 
       if (options.expanded) {
-        const container = new Container();
-        container.addChild(new Text(formatSubagentResultText(details, { expanded: false }), 0, 0));
+        const container = renderResultLines(details, theme, {
+          expanded: true,
+          suppressOutput: true,
+        });
         container.addChild(new Spacer(1));
         container.addChild(new Markdown(details.output || '(no output)', 0, 0, getMarkdownTheme()));
         return container;
       }
 
-      const text = formatSubagentResultText(details, { expanded: false })
-        .split('\n')
-        .map((line, index) => {
-          if (index === 0) return theme.fg(details.status === 'error' ? 'error' : 'success', line);
-          if (line.startsWith('▸')) return theme.fg('warning', line);
-          if (line.startsWith('↑')) return theme.fg(contextUsageSeverity(details.usage), line);
-          return line;
-        })
-        .join('\n');
-      return new Text(text, 0, 0);
+      return renderCollapsedResult(details, theme);
     },
   });
 }

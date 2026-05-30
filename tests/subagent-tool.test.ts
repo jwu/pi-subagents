@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { initTheme } from '@earendil-works/pi-coding-agent';
 import { registerSubagentTool } from '../extensions/subagent-tool.ts';
 import type { AgentConfig } from '../extensions/agent-loader.ts';
 import type { AgentResult } from '../extensions/subagent-executor.ts';
@@ -12,6 +13,18 @@ const agent: AgentConfig = {
   prompt: 'Scout.',
   source: 'global',
   filePath: '/agents/scout.md',
+};
+
+initTheme();
+
+const testTheme = {
+  fg: (_name: string, text: string) => text,
+  bold: (text: string) => text,
+};
+
+const markerTheme = {
+  fg: (name: string, text: string) => `<${name}>${text}</${name}>`,
+  bold: (text: string) => `<bold>${text}</bold>`,
 };
 
 describe('registerSubagentTool', () => {
@@ -91,6 +104,273 @@ describe('registerSubagentTool', () => {
         cwd: '/repo',
       },
     );
+  });
+
+  test('highlights expanded subagent call title and task body like collapsed preview', () => {
+    const registered: any[] = [];
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const rendered = registered[0]
+      .renderCall({ agent: 'scout', task: 'Line one\nLine two' }, markerTheme, { expanded: true })
+      .render(120)
+      .join('\n');
+
+    expect(rendered).toContain(
+      '<toolTitle><bold>subagent</bold></toolTitle> <accent>scout</accent>',
+    );
+    expect(rendered).toContain('<dim>Line one');
+    expect(rendered).toContain('Line two</dim>');
+  });
+
+  test('highlights collapsed hidden hint as dim and tool rows like renderCall titles', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: 'ok',
+      tools: [
+        ...Array.from({ length: 24 }, (_, index) => ({
+          id: `read-${index}`,
+          name: 'read',
+          args: { path: `old-${index}.md` },
+          status: 'done' as const,
+        })),
+        {
+          id: 'ls-1',
+          name: 'ls',
+          args: { path: '~/dev/playground/pi-playground/.pi/npm/node_modules/pi-subagents' },
+          status: 'done' as const,
+        },
+        {
+          id: 'grep-1',
+          name: 'grep',
+          args: {
+            pattern: 'scrapling-api-guide|scrapling',
+            path: '~/dev/playground/pi-playground',
+            glob: '*.md',
+            limit: 30,
+          },
+          status: 'done' as const,
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const lines = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, markerTheme)
+      .render(1000)
+      .map((line: string) => line.trimEnd());
+
+    const hint = lines.find((line: string) => line.includes('earlier tool calls'));
+    expect(hint).toStartWith('<dim>  ... (');
+    expect(hint).toEndWith('</dim>');
+
+    const ls = lines.find((line: string) => line.includes('pi-subagents'));
+    expect(ls).toContain('  <toolTitle><bold>ls</bold></toolTitle>');
+    expect(ls).toContain(
+      '<accent>~/dev/playground/pi-playground/.pi/npm/node_modules/pi-subagents</accent>',
+    );
+
+    const grep = lines.find((line: string) => line.includes('scrapling-api-guide'));
+    expect(grep).toContain(
+      '<toolTitle><bold>grep</bold></toolTitle> <syntaxKeyword>/scrapling-api-guide|scrapling/</syntaxKeyword><dim> in </dim><accent>~/dev/playground/pi-playground</accent><muted> (*.md)</muted><toolOutput> limit 30</toolOutput>',
+    );
+  });
+
+  test('highlights expanded tool rows while preserving markdown output rendering', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: '# Report\n\nFinal **markdown** output.',
+      tools: [
+        {
+          id: 'grep-1',
+          name: 'grep',
+          args: { pattern: 'TODO', path: '~/repo', glob: '*.ts', limit: 5 },
+          status: 'done' as const,
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const rendered = registered[0]
+      .renderResult({ content: [], details }, { expanded: true }, markerTheme)
+      .render(1000)
+      .join('\n');
+
+    expect(rendered).toContain(
+      '<toolTitle><bold>grep</bold></toolTitle> <syntaxKeyword>/TODO/</syntaxKeyword><dim> in </dim><accent>~/repo</accent><muted> (*.ts)</muted><toolOutput> limit 5</toolOutput>',
+    );
+    expect(rendered).toContain('Report');
+    expect(rendered).toContain('Final');
+  });
+
+  test('wraps long paths instead of compacting them from the left', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: 'ok',
+      tools: [
+        {
+          id: 'read-long',
+          name: 'read',
+          args: {
+            path: '~/dev/playground/pi-playground/.pi/npm/node_modules/pi-messenger/config/schema.ts',
+            offset: 1,
+            limit: 30,
+          },
+          status: 'done' as const,
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const component = registered[0].renderResult(
+      { content: [], details },
+      { expanded: false },
+      testTheme,
+    );
+
+    expect(component.render(140).join('\n')).toContain(
+      'read ~/dev/playground/pi-playground/.pi/npm/node_modules/pi-messenger/config/schema.ts:1-30',
+    );
+
+    const narrow = component.render(64).join('\n');
+    expect(narrow).toContain('read');
+    expect(narrow).toContain('~/dev/playground/pi-playground/.pi/npm/node_modules/pi-messenger');
+    expect(narrow).toContain('/config/schema.ts:1-30');
+    expect(narrow).not.toContain('.../');
+  });
+
+  test('wraps very long file names without left compaction', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: 'ok',
+      tools: [
+        {
+          id: 'read-long-file',
+          name: 'read',
+          args: {
+            path: '~/dev/playground/pi-playground/papers/(SIGGRAPH 2023) Learning Physics From Very Long Paper Title Final Version.md',
+            offset: 1,
+            limit: 20,
+          },
+          status: 'done' as const,
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const rendered = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, testTheme)
+      .render(72)
+      .join('\n');
+
+    expect(rendered).toContain('read ~/dev/playground/pi-playground/papers/(SIGGRAPH 2023)');
+    expect(rendered).toContain('Final Version.md:1-20');
+    expect(rendered).not.toContain('read .../');
+  });
+
+  test('wraps collapsed tool log and hidden hint rows when width is narrow', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output:
+        'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.\n\nSecond paragraph stays visible.',
+      tools: [
+        ...Array.from({ length: 24 }, (_, index) => ({
+          id: `read-${index}`,
+          name: 'read',
+          args: { path: `archive/very-long-directory-name/file-${index}.md` },
+          status: 'done' as const,
+        })),
+        {
+          id: 'bash-long',
+          name: 'bash',
+          args: {
+            command:
+              'width-aware-single-line-tool-rows bun test tests/subagent-render.test.ts --filter long-command',
+          },
+          status: 'done' as const,
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const lines = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, testTheme)
+      .render(36)
+      .map((line: string) => line.trimEnd());
+
+    const rendered = lines.join('\n');
+    expect(rendered).toContain('earlier tool calls');
+    expect(rendered).toContain('expand');
+
+    expect(rendered).toContain('width-aware');
+    expect(rendered).toContain('long-command');
+    expect(rendered).not.toContain('.../');
+
+    expect(lines.some((line: string) => line.includes('Alpha beta gamma'))).toBe(true);
+    expect(lines.some((line: string) => line.includes('iota kappa lambda'))).toBe(true);
   });
 
   test('registers subagent and executes the requested agent task', async () => {
