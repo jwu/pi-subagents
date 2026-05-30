@@ -14,6 +14,7 @@ import {
   contextUsageSeverity,
   formatSubagentCall,
   formatSubagentResultLines,
+  formatUsage,
   type SubagentResultLine,
 } from './subagent-render.ts';
 
@@ -219,7 +220,12 @@ function styledSubagentCall(
 function renderResultLines(
   details: AgentResult | AgentProgress,
   theme: CollapsedTheme,
-  options: { expanded: boolean; suppressOutput?: boolean; expandHint?: string },
+  options: {
+    expanded: boolean;
+    suppressOutput?: boolean;
+    suppressUsage?: boolean;
+    expandHint?: string;
+  },
 ): Container {
   const container = new Container();
   for (const line of formatSubagentResultLines(details, options)) {
@@ -306,9 +312,14 @@ export function registerSubagentTool(
         const container = renderResultLines(details, theme, {
           expanded: true,
           suppressOutput: true,
+          suppressUsage: true,
         });
         container.addChild(new Spacer(1));
         container.addChild(new Markdown(details.output || '(no output)', 0, 0, getMarkdownTheme()));
+        container.addChild(new Spacer(1));
+        container.addChild(
+          new Text(theme.fg(contextUsageSeverity(details.usage), formatUsage(details)), 0, 0),
+        );
         return container;
       }
 

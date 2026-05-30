@@ -230,6 +230,46 @@ describe('registerSubagentTool', () => {
     expect(rendered).toContain('Final');
   });
 
+  test('keeps expanded usage summary after markdown output', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: '# Report\n\nFinal **markdown** output.',
+      tools: [],
+      usage: {
+        input: 11600,
+        output: 7100,
+        cacheRead: 132700,
+        cacheWrite: 0,
+        cost: 0.004,
+        contextTokens: 19000,
+        contextWindow: 1000000,
+      },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const lines = registered[0]
+      .renderResult({ content: [], details }, { expanded: true }, testTheme)
+      .render(1000)
+      .map((line: string) => line.trimEnd());
+
+    expect(lines.at(-1)).toBe('1.9%/1m ↑11.6k ↓7.1k R132.7k $0.004');
+    expect(lines.at(-2)).toBe('');
+    expect(lines.findIndex((line: string) => line.includes('Final'))).toBeLessThan(
+      lines.length - 2,
+    );
+  });
+
   test('wraps long paths instead of compacting them from the left', () => {
     const registered: any[] = [];
     const details: AgentResult = {

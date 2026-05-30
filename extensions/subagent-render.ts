@@ -9,6 +9,7 @@ export interface SubagentCallArgs {
 export interface RenderTextOptions {
   expanded: boolean;
   suppressOutput?: boolean;
+  suppressUsage?: boolean;
   expandHint?: string;
 }
 
@@ -67,7 +68,7 @@ function formatTokens(value: number): string {
   return String(value);
 }
 
-function formatUsage(progress: AgentProgress): string {
+export function formatUsage(progress: AgentProgress): string {
   const usage = progress.usage;
   const parts: string[] = [];
 
@@ -234,7 +235,10 @@ export function formatSubagentResultLines(
   ];
 
   if (progress.status === 'running' || options.suppressOutput) {
-    lines.push({ text: usage, kind: 'usage', singleLine: false });
+    if (!options.suppressUsage) {
+      lines.push({ text: '', kind: 'blank', singleLine: false });
+      lines.push({ text: usage, kind: 'usage', singleLine: false });
+    }
     return lines;
   }
 
@@ -244,7 +248,10 @@ export function formatSubagentResultLines(
 
   lines.push({ text: '', kind: 'blank', singleLine: false });
   lines.push({ text: output, kind: 'output', singleLine: false });
-  lines.push({ text: usage, kind: 'usage', singleLine: false });
+  if (!options.suppressUsage) {
+    lines.push({ text: '', kind: 'blank', singleLine: false });
+    lines.push({ text: usage, kind: 'usage', singleLine: false });
+  }
   return lines;
 }
 
