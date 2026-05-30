@@ -8,7 +8,10 @@ export interface SubagentCallArgs {
 
 export interface RenderTextOptions {
   expanded: boolean;
+  suppressOutput?: boolean;
 }
+
+const TOOL_LOG_LIMIT = 50;
 
 export type ContextUsageSeverity = 'dim' | 'warning' | 'error';
 
@@ -44,15 +47,28 @@ function summaryText(markdown: string): string {
     .join('\n');
 }
 
+function formatTokens(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}m`;
+  if (Math.abs(value) >= 1_000) return `${Number((value / 1_000).toFixed(1))}k`;
+  return String(value);
+}
+
 function formatUsage(progress: AgentProgress): string {
   const usage = progress.usage;
-  const context =
-    usage.contextWindow && usage.contextWindow > 0
-      ? ` ${Math.round((usage.contextTokens / usage.contextWindow) * 100)}%/${usage.contextWindow}`
-      : '';
-  return `↑${usage.input} ↓${usage.output} R${usage.cacheRead} W${usage.cacheWrite} $${usage.cost.toFixed(
-    4,
-  )}${context}`;
+  const parts: string[] = [];
+
+  if (usage.contextWindow && usage.contextWindow > 0) {
+    const percent = ((usage.contextTokens / usage.contextWindow) * 100).toFixed(1);
+    parts.push(`${percent}%/${formatTokens(usage.contextWindow)}`);
+  }
+
+  parts.push(`↑${formatTokens(usage.input)}`);
+  parts.push(`↓${formatTokens(usage.output)}`);
+  parts.push(`R${formatTokens(usage.cacheRead)}`);
+  if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
+  parts.push(`$${usage.cost.toFixed(3)}`);
+
+  return parts.join(' ');
 }
 
 function indent(text: string, spaces: number): string {
@@ -114,10 +130,17 @@ function formatToolTitle(name: string, args: Record<string, unknown>): string {
 
 function formatToolLines(progress: AgentProgress, options: RenderTextOptions): string[] {
   const lines: string[] = [];
-  for (const tool of progress.tools) {
+  const hiddenCount = Math.max(0, progress.tools.length - TOOL_LOG_LIMIT);
+  const visibleTools = progress.tools.slice(hiddenCount);
+
+  if (hiddenCount > 0) lines.push(`  ... ${hiddenCount} earlier tools`);
+
+  for (const tool of visibleTools) {
     lines.push(`${tool.status === 'running' ? '▸' : ' '} ${formatToolTitle(tool.name, tool.args)}`);
-    if (options.expanded && tool.nested) {
-      lines.push(indent(formatSubagentResultText(tool.nested, { expanded: false }), 2));
+    if ((options.expanded || progress.status === 'running') && tool.nested) {
+      lines.push(
+        indent(formatSubagentResultText(tool.nested, { expanded: false, suppressOutput: true }), 2),
+      );
     }
   }
   return lines;
@@ -140,9 +163,15 @@ export function formatSubagentResultText(
     progress.tools.length
   } tools · ${elapsedSeconds(progress.elapsedMs)}s`;
   const toolLines = formatToolLines(progress, options);
+  const usage = formatUsage(progress);
+
+  if (progress.status === 'running' || options.suppressOutput) {
+    return [statusLine, ...toolLines, usage].join('\n');
+  }
+
   const output = options.expanded
     ? progress.output || '(no output)'
     : summaryText(progress.output) || '(no output)';
 
-  return [statusLine, ...toolLines, output, formatUsage(progress)].join('\n');
+  return [statusLine, ...toolLines, '', output, usage].join('\n');
 }

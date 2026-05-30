@@ -113,13 +113,63 @@ describe('subagent rendering text', () => {
     expect(text).not.toContain('{"path":');
   });
 
+  test('formats running progress as tool log plus usage without output preview', () => {
+    const text = formatSubagentResultText(
+      {
+        ...result,
+        status: 'running',
+        output: 'This should not be shown while running.',
+        usage: {
+          input: 99000,
+          output: 5100,
+          cacheRead: 401000,
+          cacheWrite: 0,
+          cost: 0.85,
+          contextTokens: 44608,
+          contextWindow: 272000,
+        },
+        elapsedMs: 90000,
+      },
+      { expanded: false },
+    );
+
+    expect(text).toContain('▸ scout (anthropic/claude-haiku-4-5) — 2 tools · 90s');
+    expect(text).toContain('  read "README.md"');
+    expect(text).toContain('▸ grep "TODO"');
+    expect(text).not.toContain('This should not be shown while running.');
+    expect(text).toContain('16.4%/272k ↑99k ↓5.1k R401k $0.850');
+  });
+
+  test('limits running tool logs to the latest 50 entries', () => {
+    const tools = Array.from({ length: 73 }, (_, index) => ({
+      id: String(index),
+      name: 'read',
+      args: { path: `file-${index}.md` },
+      status: 'done' as const,
+    }));
+
+    const text = formatSubagentResultText(
+      {
+        ...result,
+        status: 'running',
+        tools,
+      },
+      { expanded: false },
+    );
+
+    expect(text).toContain('  ... 23 earlier tools');
+    expect(text).not.toContain('file-22.md');
+    expect(text).toContain('file-23.md');
+    expect(text).toContain('file-72.md');
+  });
+
   test('formats collapsed result with status, tool logs, summary, and usage', () => {
     const text = formatSubagentResultText(result, { expanded: false });
 
     expect(text).toContain('✓ scout (anthropic/claude-haiku-4-5) — 2 tools · 2s');
     expect(text).toContain('  read "README.md"');
     expect(text).toContain('▸ grep "TODO"');
-    expect(text).toContain('First paragraph.\nSecond paragraph.\nThird paragraph.');
-    expect(text).toContain('↑1200 ↓345 R10 W20 $0.0123 70%/100000');
+    expect(text).toContain('\n\nFirst paragraph.\nSecond paragraph.\nThird paragraph.');
+    expect(text).toContain('70.0%/100k ↑1.2k ↓345 R10 W20 $0.012');
   });
 });
