@@ -54,6 +54,15 @@ describe('subagent rendering text', () => {
     );
   });
 
+  test('adds a blank line before the result status in collapsed and expanded views', () => {
+    expect(formatSubagentResultText(result, { expanded: false })).toStartWith(
+      '\n✓ scout (anthropic/claude-haiku-4-5)',
+    );
+    expect(formatSubagentResultText(result, { expanded: true })).toStartWith(
+      '\n✓ scout (anthropic/claude-haiku-4-5)',
+    );
+  });
+
   test('renders nested subagent progress inline under the launching tool in expanded view', () => {
     const nested = {
       ...result,

@@ -126,6 +126,41 @@ describe('registerSubagentTool', () => {
     expect(rendered).toContain('Line two</dim>');
   });
 
+  test('renders a blank line before result status in collapsed and expanded views', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: 'ok',
+      tools: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const collapsed = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, testTheme)
+      .render(120)
+      .map((line: string) => line.trimEnd());
+    const expanded = registered[0]
+      .renderResult({ content: [], details }, { expanded: true }, testTheme)
+      .render(120)
+      .map((line: string) => line.trimEnd());
+
+    expect(collapsed[0]).toBe('');
+    expect(collapsed[1]).toStartWith('✓ scout');
+    expect(expanded[0]).toBe('');
+    expect(expanded[1]).toStartWith('✓ scout');
+  });
+
   test('highlights collapsed hidden hint as dim and tool rows like renderCall titles', () => {
     const registered: any[] = [];
     const details: AgentResult = {

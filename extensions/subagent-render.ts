@@ -201,6 +201,7 @@ export function formatSubagentResultLines(
   const toolLines = formatToolLineItems(progress, options);
   const usage = formatUsage(progress);
   const lines: SubagentResultLine[] = [
+    { text: '', kind: 'blank', singleLine: false },
     { text: statusLine, kind: 'status', singleLine: false },
     ...toolLines,
   ];
