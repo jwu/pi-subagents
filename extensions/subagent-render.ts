@@ -49,17 +49,8 @@ function elapsedSeconds(ms: number): number {
   return Math.round(ms / 1000);
 }
 
-function stripCodeBlocks(markdown: string): string {
-  return markdown.replace(/```[\s\S]*?```/g, '').trim();
-}
-
 function summaryText(markdown: string): string {
-  return stripCodeBlocks(markdown)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 20)
-    .join('\n');
+  return markdown.split('\n').slice(0, 20).join('\n');
 }
 
 function formatTokens(value: number): string {
@@ -248,6 +239,20 @@ export function formatSubagentResultLines(
 
   lines.push({ text: '', kind: 'blank', singleLine: false });
   lines.push({ text: output, kind: 'output', singleLine: false });
+
+  if (!options.expanded) {
+    const totalLines = (progress.output || '').split('\n').length;
+    if (totalLines > 20) {
+      const hidden = totalLines - 20;
+      const expandHint = options.expandHint ?? 'to expand';
+      lines.push({
+        text: `... (${hidden} more lines, ${expandHint})`,
+        kind: 'hint',
+        singleLine: true,
+      });
+    }
+  }
+
   if (!options.suppressUsage) {
     lines.push({ text: '', kind: 'blank', singleLine: false });
     lines.push({ text: usage, kind: 'usage', singleLine: false });

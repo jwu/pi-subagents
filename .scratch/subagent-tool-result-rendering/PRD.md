@@ -12,7 +12,7 @@ Status: ready-for-agent
 
 改进 `subagent` 工具结果渲染，让主代理看到紧凑、熟悉、宽度安全的子代理活动摘要。
 
-折叠态只展示最近 20 个工具调用。如果有更早的调用被隐藏，显示 pi 风格的展开提示，例如：`... (53 earlier tool calls, Ctrl+O to expand)`。提示中的按键必须使用用户当前配置的 pi 工具展开快捷键，而不是硬编码 `Ctrl+O`。该提示行应使用 dim 样式，降低视觉噪音。折叠态最终输出摘要最多显示 20 个逻辑行。
+折叠态只展示最近 20 个工具调用。如果有更早的调用被隐藏，显示 pi 风格的展开提示，例如：`... (53 earlier tool calls, Ctrl+O to expand)`。提示中的按键必须使用用户当前配置的 pi 工具展开快捷键，而不是硬编码 `Ctrl+O`。该提示行应使用 dim 样式，降低视觉噪音。折叠态最终输出摘要显示原始 Markdown 文本的前 20 个 `\n` 行（含空行、含代码块），不做任何预处理；用 `Text` 组件渲染，与 pi builtin 工具风格一致。空行计入 20 行。如果输出超过 20 行，末尾追加截断提示：`... (N more lines, <keybinding> to expand)`，dim 样式，提示行不计入 20 行。
 
 展开态展示全部工具调用，并保留现有完整子代理输出渲染。工具调用行沿用原有路径显示方式：宽度足够时显示在一行，宽度不足时允许自然换行；不做左侧路径省略，也不做右侧 `...` 截断。
 
@@ -47,7 +47,8 @@ Status: ready-for-agent
 ## 实现决策
 
 - 折叠态子代理结果只显示最近 20 个工具调用。
-- 折叠态子代理最终输出摘要最多显示 20 个非空逻辑行；不再额外限制为 3 个段落。
+- 折叠态子代理最终输出摘要显示原始 Markdown 文本的前 20 个 `\n` 行（含空行、含代码块），不做预处理；用 `Text` 组件渲染。空行计入 20 行，与 pi builtin 工具（read、bash 等）渲染风格一致。不再额外限制为 3 个段落，也不去除代码块。
+- 折叠态输出超过 20 行时，末尾追加截断提示：`... (N more lines, <keybinding> to expand)`，dim 样式，提示行不计入 20 行。N 为剩余行数（原始 `\n` 行总数 - 20）。展开快捷键通过 pi 的 keybinding hint 工具动态获取。
 - 子代理 usage 行应使用 `agent_end.messages` 中所有 assistant 消息的聚合 usage，避免只显示最后一个 assistant turn 的 token/cost。context window 优先从事件 usage 读取，缺失时根据消息 provider/model 从 pi model registry 推断。
 - 展开态子代理结果显示全部工具调用。
 - 隐藏数量文案使用 `earlier tool calls`，不用 `earlier tools`，因为这里统计的是调用记录，不是工具定义种类。
@@ -75,7 +76,7 @@ Status: ready-for-agent
 - 单元测试应覆盖 `subagent` 自身 `renderCall` 的折叠态和展开态标题 highlight，并确认展开态任务正文使用与折叠态任务预览一致的 `dim` 样式。
 - 单元测试应覆盖折叠态和展开态常见工具标题的 highlight 结构，尤其是 `ls` 路径使用 accent、工具名使用 toolTitle + bold，以及 `grep` pattern/path/glob/limit 使用与 grep-highlight 扩展一致的样式。
 - 单元测试应覆盖长路径在宽度不足时换行而不是左侧省略，并确认 `read` 的行号范围仍保留。
-- 单元测试应覆盖折叠态最终输出摘要最多显示 20 个非空逻辑行，并确认不会在 3 个段落处提前停止。
+- 单元测试应覆盖折叠态最终输出摘要显示原始 Markdown 文本的前 20 个 `\n` 行（含空行、含代码块），不做预处理；超过 20 行时追加 dim 截断提示，提示行不计入 20 行。确认不会去除代码块或在 3 个段落处提前停止。
 - 单元测试应覆盖从 `agent_end.messages` 聚合 usage，而不是只依赖单个 `message_end`。
 - 测试应确认子代理输出摘要和展开态 Markdown 输出保持现有换行/Markdown 行为。
 - 类型检查仍作为验证步骤。
@@ -94,3 +95,12 @@ Status: ready-for-agent
 讨论中已经确认的小决策包括：折叠态限制为 20 个工具调用，展开态显示全部工具调用，隐藏数量提示使用 pi 当前配置的工具展开快捷键，隐藏提示使用 dim 样式，工具调用 result 行尽量复刻原生 `renderCall` highlight，长路径不做左侧省略而是允许换行。
 
 剩余风险最高的设计点是 highlight 与普通文本换行的组合。最稳妥的方案是继续使用普通 Text 渲染工具日志块，保持展开态 Markdown 输出不变。
+
+## Grill 确认
+
+2026-05-30 grill-with-docs 面谈确认折叠态输出摘要行为：
+- 与展开态 Markdown 渲染方式**不一致**（展开态用 `Markdown` 组件，折叠态用 `Text` 组件按 `\n` 行截断），与 pi builtin 工具（read、bash 等）行为一致
+- 不做代码块去除、不过滤空行、不 trim——原始文本直接截前 20 行
+- 空行计入 20 行
+- 截断提示 `... (N more lines, <keybinding> to expand)` dim 样式，不计入 20 行
+- 子代理输出以代码块开头导致摘要全是代码：接受，不做特殊处理

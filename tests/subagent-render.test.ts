@@ -265,6 +265,43 @@ describe('subagent rendering text', () => {
     expect(text).toContain('  subagent researcher "Investigate"');
   });
 
+  test('collapsed output summary preserves code blocks instead of stripping them', () => {
+    const output = 'Before\n\n```ts\nconst x = 1;\n```\n\nAfter';
+    const text = formatSubagentResultText({ ...result, output }, { expanded: false });
+
+    expect(text).toContain('```ts');
+    expect(text).toContain('const x = 1;');
+    expect(text).toContain('```');
+  });
+
+  test('collapsed output summary preserves empty lines instead of filtering them', () => {
+    const output = 'line1\n\n\nline4';
+    const text = formatSubagentResultText({ ...result, output }, { expanded: false });
+
+    // Should contain the blank line between line1 and line4
+    const lines = text.split('\n');
+    const outputStart = lines.findIndex((l) => l === 'line1');
+    expect(outputStart).not.toBe(-1);
+    expect(lines[outputStart + 1]).toBe('');
+    expect(lines[outputStart + 2]).toBe('');
+    expect(lines[outputStart + 3]).toBe('line4');
+  });
+
+  test('appends truncation hint when collapsed output exceeds 20 lines', () => {
+    const output = Array.from({ length: 25 }, (_, index) => `line ${index + 1}`).join('\n');
+    const text = formatSubagentResultText({ ...result, output }, { expanded: false });
+
+    expect(text).toContain('... (5 more lines');
+    expect(text).toContain('to expand');
+  });
+
+  test('does not append truncation hint when collapsed output is 20 lines or fewer', () => {
+    const output = Array.from({ length: 15 }, (_, index) => `line ${index + 1}`).join('\n');
+    const text = formatSubagentResultText({ ...result, output }, { expanded: false });
+
+    expect(text).not.toContain('more lines');
+  });
+
   test('limits collapsed output summary to 20 logical lines', () => {
     const output = Array.from({ length: 25 }, (_, index) => `summary line ${index + 1}`).join('\n');
     const text = formatSubagentResultText({ ...result, output }, { expanded: false });
@@ -289,7 +326,9 @@ describe('subagent rendering text', () => {
     expect(text).toContain('✓ scout (anthropic/claude-haiku-4-5) — 2 tools · 2s');
     expect(text).toContain('  read README.md');
     expect(text).toContain('▸ grep /TODO/ in .');
-    expect(text).toContain('\n\nFirst paragraph.\nSecond paragraph.\nThird paragraph.');
+    expect(text).toContain(
+      'First paragraph.\n\nSecond paragraph.\n\n```ts\nconst x = 1;\n```\n\nThird paragraph.',
+    );
     expect(text).toContain('70.0%/100k ↑1.2k ↓345 R10 W20 $0.012');
   });
 });
