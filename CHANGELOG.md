@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/jwu/pi-subagents/compare/v1.0.1...v1.1.0) (2026-05-31)
+
+
+### Features
+
+* **subagent:** list available agents in system prompt Guidelines ([317ed58](https://github.com/jwu/pi-subagents/commit/317ed5845379d3edd535bc03dab8460b29a82164))
+
 ## [1.0.1](https://github.com/jwu/pi-subagents/compare/v1.0.0...v1.0.1) (2026-05-31)
 
 
