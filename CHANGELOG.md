@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/jwu/pi-subagents/compare/v1.0.0...v1.0.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* add spacing before subagent result status ([21932f5](https://github.com/jwu/pi-subagents/commit/21932f5cc7a59f504c60f36a6375f322c46acf8c))
+
 # 1.0.0 (2026-05-30)
 
 
