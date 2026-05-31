@@ -1,3 +1,7 @@
+## Sub Agents
+
+- scout
+
 ## Agent skills
 
 ### Issue 跟踪
