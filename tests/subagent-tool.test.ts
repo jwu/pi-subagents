@@ -496,4 +496,56 @@ describe('registerSubagentTool', () => {
       isError: false,
     });
   });
+
+  test('includes available subagents in promptGuidelines', () => {
+    const registered: any[] = [];
+    const reviewer: AgentConfig = { ...agent, name: 'reviewer' };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent, reviewer] },
+    );
+
+    expect(registered[0].promptGuidelines).toEqual(['Available subagents: reviewer, scout']);
+  });
+
+  test('omits promptGuidelines when no agents are available', () => {
+    const registered: any[] = [];
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [] },
+    );
+
+    expect(registered[0].promptGuidelines).toBeUndefined();
+  });
+
+  test('promptGuidelines respects PI_SUBAGENT_ALLOWED filtering', () => {
+    const registered: any[] = [];
+    const writer: AgentConfig = { ...agent, name: 'writer' };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent, writer],
+        env: { PI_SUBAGENT_ALLOWED: 'scout' },
+      },
+    );
+
+    expect(registered[0].promptGuidelines).toEqual(['Available subagents: scout']);
+  });
+
+  test('promptGuidelines is undefined when PI_SUBAGENT_ALLOWED filters out all agents', () => {
+    const registered: any[] = [];
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent],
+        env: { PI_SUBAGENT_ALLOWED: 'nonexistent' },
+      },
+    );
+
+    expect(registered[0].promptGuidelines).toBeUndefined();
+  });
 });

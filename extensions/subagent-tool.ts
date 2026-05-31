@@ -17,6 +17,7 @@ import {
   type SubagentResultLine,
 } from './subagent-render.ts';
 import { numberArg, preview, shortenPath, stringArg } from './tool-args.ts';
+import { allowedAgentNames, isPastMaxDepth, type RecursionEnv } from './env-utils.ts';
 
 const SubagentParams = {
   type: 'object',
@@ -36,10 +37,6 @@ type SubagentParamsType = {
 };
 
 type RegisterablePi = Pick<ExtensionAPI, 'registerTool'>;
-type RecursionEnv = Partial<
-  Record<'PI_SUBAGENT_ALLOWED' | 'PI_SUBAGENT_DEPTH' | 'PI_SUBAGENT_MAX_DEPTH', string>
->;
-
 export interface RegisterSubagentToolOptions {
   agents: AgentConfig[];
   run?: typeof runSubagent;
@@ -68,29 +65,6 @@ function toProgressResult(progress: AgentProgress) {
     content: [{ type: 'text' as const, text: progress.output || '(running...)' }],
     details: progress,
   };
-}
-
-function parseEnvNumber(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function allowedAgentNames(env: RecursionEnv): Set<string> | undefined {
-  const raw = env?.PI_SUBAGENT_ALLOWED;
-  if (!raw) return undefined;
-  return new Set(
-    raw
-      .split(',')
-      .map((name) => name.trim())
-      .filter(Boolean),
-  );
-}
-
-function isPastMaxDepth(env: RecursionEnv): boolean {
-  const depth = parseEnvNumber(env?.PI_SUBAGENT_DEPTH);
-  const maxDepth = parseEnvNumber(env?.PI_SUBAGENT_MAX_DEPTH);
-  return depth !== undefined && maxDepth !== undefined && depth > maxDepth;
 }
 
 type CollapsedTheme = {
@@ -243,11 +217,19 @@ export function registerSubagentTool(
     : options.agents;
   const runner = options.run ?? runSubagent;
 
+  const agentNames = agents
+    .map((a) => a.name)
+    .sort()
+    .join(', ');
+  const promptGuidelines =
+    agentNames.length > 0 ? [`Available subagents: ${agentNames}`] : undefined;
+
   pi.registerTool({
     name: 'subagent',
     label: 'Subagent',
     description: 'Delegate a task to a named sub-agent running in an isolated pi process.',
     promptSnippet: 'Delegate isolated tasks with subagent({ agent, task, cwd? }).',
+    promptGuidelines,
     parameters: SubagentParams,
 
     async execute(
