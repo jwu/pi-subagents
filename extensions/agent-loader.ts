@@ -15,6 +15,7 @@ export interface AgentConfig {
   systemPromptMode: SystemPromptMode;
   allowedAgents?: string[];
   maxDepth: number;
+  skills?: string[];
   prompt: string;
   source: AgentSource;
   filePath: string;
@@ -117,11 +118,13 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
   }
 
   const allowedAgents = splitCsv(data.allowedAgents);
+  const skills = splitCsv(data.skills);
 
   return {
     name: data.name,
     description: data.description,
     tools: splitCsv(data.tools),
+    skills: skills.length > 0 ? skills : undefined,
     model: data.model || undefined,
     thinking,
     systemPromptMode,

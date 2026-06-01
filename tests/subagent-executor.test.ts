@@ -421,4 +421,74 @@ describe('runSubagent', () => {
     expect(calls[0].args).toContain('Task: @/tmp/pi-subagents-test/run-2/task.md');
     expect(removed).toEqual(['/tmp/pi-subagents-test/run-2']);
   });
+
+  test('injects skills as <available_skills> block into system prompt when agent has skills', async () => {
+    const writes: Array<{ filePath: string; content: string }> = [];
+
+    await runSubagent({
+      agent: {
+        ...baseAgent,
+        skills: ['caveman'],
+      },
+      task: 'Be brief',
+      cwd: process.cwd(),
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-3',
+        writeFile: async (filePath, content) => {
+          writes.push({ filePath, content });
+        },
+        removeDir: async () => {},
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    const promptWrite = writes.find((w) => w.filePath.endsWith('system-prompt.md'));
+    expect(promptWrite).toBeDefined();
+    expect(promptWrite!.content).toContain('<available_skills>');
+    expect(promptWrite!.content).toContain('<name>caveman</name>');
+    expect(promptWrite!.content).toContain('Ultra-compressed');
+    expect(promptWrite!.content).toContain('<location>');
+  });
+
+  test('does not inject skills block when agent has no skills', async () => {
+    const writes: Array<{ filePath: string; content: string }> = [];
+
+    await runSubagent({
+      agent: { ...baseAgent },
+      task: 'Be brief',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-4',
+        writeFile: async (filePath, content) => {
+          writes.push({ filePath, content });
+        },
+        removeDir: async () => {},
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    const promptWrite = writes.find((w) => w.filePath.endsWith('system-prompt.md'));
+    expect(promptWrite).toBeDefined();
+    expect(promptWrite!.content).not.toContain('<available_skills>');
+  });
 });

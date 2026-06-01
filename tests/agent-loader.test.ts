@@ -101,6 +101,81 @@ You inspect code quickly.
     ]);
   });
 
+  test('parses skills field from frontmatter', async () => {
+    const files = new Map<string, string>([
+      [
+        '/project/coder.md',
+        '---\nname: coder\ndescription: Codes with style\nskills: tdd, caveman\n---\nWrite code.\n',
+      ],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.agents[0].skills).toEqual(['tdd', 'caveman']);
+  });
+
+  test('skills field is undefined when not declared in frontmatter', async () => {
+    const files = new Map<string, string>([
+      ['/global/minimal.md', '---\nname: minimal\n---\nMinimal.\n'],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.agents[0].skills).toBeUndefined();
+  });
+
+  test('empty skills frontmatter value results in undefined', async () => {
+    const files = new Map<string, string>([
+      ['/global/empty.md', '---\nname: empty\nskills:\n---\nEmpty skills.\n'],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.agents[0].skills).toBeUndefined();
+  });
+
+  test('does not parse skill (singular) field', async () => {
+    const files = new Map<string, string>([
+      ['/global/singular.md', '---\nname: singular\nskill: tdd\n---\nSingular skill.\n'],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.agents[0].skills).toBeUndefined();
+  });
+
   test('project-local agents override global agents while first duplicate in one directory wins', async () => {
     const files = new Map<string, string>([
       ['/global/scout-a.md', '---\nname: scout\ndescription: global first\n---\nA\n'],

@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from './agent-loader.ts';
+import { resolveSkills } from './skill-resolver.ts';
 
 export interface AgentUsage {
   input: number;
@@ -274,6 +275,40 @@ function buildTaskArgument(task: string, taskFilePath: string | undefined): stri
   return taskFilePath ? `Task: @${taskFilePath}` : `Task: ${task}`;
 }
 
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function formatSkillsForPrompt(
+  skills: Array<{ name: string; description: string; location: string }>,
+): string {
+  if (skills.length === 0) return '';
+
+  const lines = [
+    '\n\nThe following skills provide specialized instructions for specific tasks.',
+    "Use the read tool to load a skill's file when the task matches its description.",
+    'When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.',
+    '',
+    '<available_skills>',
+  ];
+
+  for (const skill of skills) {
+    lines.push('  <skill>');
+    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+    lines.push(`    <location>${escapeXml(skill.location)}</location>`);
+    lines.push('  </skill>');
+  }
+
+  lines.push('</available_skills>');
+  return lines.join('\n');
+}
+
 function byteLength(text: string): number {
   return Buffer.byteLength(text, 'utf8');
 }
@@ -339,7 +374,20 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
 
   try {
     const promptFilePath = path.join(tempDir, 'system-prompt.md');
-    await fileSystem.writeFile(promptFilePath, options.agent.prompt);
+
+    let promptContent = options.agent.prompt;
+    const skillNames = options.agent.skills;
+    if (skillNames && skillNames.length > 0) {
+      const { resolved, missing } = resolveSkills(skillNames, { cwd: options.cwd });
+      for (const name of missing) {
+        console.warn(`[pi-subagents] skill not found: ${name}`);
+      }
+      const skillInjection = formatSkillsForPrompt(resolved);
+      if (skillInjection) {
+        promptContent = `${promptContent}${skillInjection}`;
+      }
+    }
+    await fileSystem.writeFile(promptFilePath, promptContent);
 
     let taskFilePath: string | undefined;
     if (options.task.length > TASK_FILE_THRESHOLD) {
