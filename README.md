@@ -65,6 +65,16 @@ Available subagents:
 
 For sub-agents launched with `systemPrompt: replace` or `systemPrompt: append`, the same block is written into the prompt passed via `--system-prompt` or `--append-system-prompt` when that agent has the `subagent` tool.
 
+### Debug a sub-agent prompt
+
+Use the slash command to preview the generated sub-agent system prompt:
+
+```text
+/debug-subagent-prompt <agentName>
+```
+
+The preview opens in your external editor (`$VISUAL` or `$EDITOR`) as a read-only temporary Markdown file. It shows the prompt content that pi-subagents writes for the child process, including injected `Available subagents` and `skills` blocks. For agents with `systemPrompt: append`, the preview shows only the appended content; pi's default system prompt is not included.
+
 ## Agent configuration
 
 Agents are Markdown files with YAML frontmatter.

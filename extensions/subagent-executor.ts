@@ -89,6 +89,19 @@ export interface RunSubagentOptions {
   now?: () => number;
 }
 
+export interface BuildSubagentSystemPromptOptions {
+  agent: AgentConfig;
+  cwd: string;
+  availableAgents?: string[];
+  agentDir?: string;
+}
+
+export interface BuildSubagentSystemPromptResult {
+  prompt: string;
+  missingSkills: string[];
+  skippedSkillPackages: string[];
+}
+
 const TASK_FILE_THRESHOLD = 8000;
 const OUTPUT_MAX_BYTES = 50 * 1024;
 const OUTPUT_MAX_LINES = 2000;
@@ -333,6 +346,40 @@ function safeFilePart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]+/g, '_');
 }
 
+export async function buildSubagentSystemPrompt(
+  options: BuildSubagentSystemPromptOptions,
+): Promise<BuildSubagentSystemPromptResult> {
+  let prompt = options.agent.prompt;
+
+  if (options.agent.tools.includes('subagent')) {
+    const availableSubagentsBlock = formatAvailableSubagentsBlock(
+      options.availableAgents ?? options.agent.allowedAgents ?? [],
+    );
+    if (availableSubagentsBlock) {
+      prompt = `${prompt.trimEnd()}\n\n${availableSubagentsBlock}`;
+    }
+  }
+
+  const missingSkills: string[] = [];
+  const skippedSkillPackages: string[] = [];
+  const skillNames = options.agent.skills;
+  if (skillNames && skillNames.length > 0) {
+    const resolvedSkills = await resolveSkills(skillNames, {
+      cwd: options.cwd,
+      agentDir: options.agentDir,
+    });
+    missingSkills.push(...resolvedSkills.missing);
+    skippedSkillPackages.push(...resolvedSkills.skippedPackages);
+
+    const skillInjection = formatSkillsForPrompt(resolvedSkills.resolved);
+    if (skillInjection) {
+      prompt = `${prompt}${skillInjection}`;
+    }
+  }
+
+  return { prompt, missingSkills, skippedSkillPackages };
+}
+
 function progressFromPartialResult(partialResult: unknown): AgentProgress | undefined {
   if (!partialResult || typeof partialResult !== 'object') return undefined;
   const details = (partialResult as { details?: unknown }).details;
@@ -377,34 +424,19 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
   try {
     const promptFilePath = path.join(tempDir, 'system-prompt.md');
 
-    let promptContent = options.agent.prompt;
-    if (options.agent.tools.includes('subagent')) {
-      const availableSubagentsBlock = formatAvailableSubagentsBlock(
-        options.availableAgents ?? options.agent.allowedAgents ?? [],
-      );
-      if (availableSubagentsBlock) {
-        promptContent = `${promptContent.trimEnd()}\n\n${availableSubagentsBlock}`;
-      }
+    const promptResult = await buildSubagentSystemPrompt({
+      agent: options.agent,
+      cwd: options.cwd,
+      availableAgents: options.availableAgents,
+      agentDir: options.agentDir,
+    });
+    for (const source of promptResult.skippedSkillPackages) {
+      console.warn(`[pi-subagents] package not installed, skipping skills: ${source}`);
     }
-
-    const skillNames = options.agent.skills;
-    if (skillNames && skillNames.length > 0) {
-      const { resolved, missing, skippedPackages } = await resolveSkills(skillNames, {
-        cwd: options.cwd,
-        agentDir: options.agentDir,
-      });
-      for (const source of skippedPackages) {
-        console.warn(`[pi-subagents] package not installed, skipping skills: ${source}`);
-      }
-      for (const name of missing) {
-        console.warn(`[pi-subagents] skill not found: ${name}`);
-      }
-      const skillInjection = formatSkillsForPrompt(resolved);
-      if (skillInjection) {
-        promptContent = `${promptContent}${skillInjection}`;
-      }
+    for (const name of promptResult.missingSkills) {
+      console.warn(`[pi-subagents] skill not found: ${name}`);
     }
-    await fileSystem.writeFile(promptFilePath, promptContent);
+    await fileSystem.writeFile(promptFilePath, promptResult.prompt);
 
     let taskFilePath: string | undefined;
     if (options.task.length > TASK_FILE_THRESHOLD) {

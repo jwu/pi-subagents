@@ -32,6 +32,10 @@ _避免使用_：skill prompt、capability file、instruction bundle
 控制代理的 Markdown 正文如何应用于子 pi 进程。`replace`（默认）通过 `--system-prompt` 传入正文，替换默认系统提示词。`append` 通过 `--append-system-prompt` 传入，追加到默认提示词之后。取值为 `replace` 或 `append`。
 _避免使用_：system prompt strategy、prompt injection mode
 
+**子代理系统提示词（Sub-agent system prompt）**：
+子代理启动时接收的系统级指令，由代理定义及子代理可用资源提示组成。用于预览与核对子代理会话开始前的行为边界。
+_避免使用_：subagent prompt、agent prompt、child prompt
+
 **可用子代理提示（Available subagents prompt）**：
 向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；系统提示词中使用独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
 _避免使用_：agent list prompt、subagent guideline only

@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { loadAgentDefinitions } from './agent-loader.ts';
 import { allowedAgentNames, isPastMaxDepth } from './env-utils.ts';
+import { registerDebugSubagentPromptCommand } from './debug-subagent-prompt-command.ts';
 import { appendAvailableSubagentsBlock } from './subagent-prompt.ts';
 import { registerSubagentTool } from './subagent-tool.ts';
 
@@ -24,4 +25,5 @@ export default async function (pi: ExtensionAPI) {
   }
 
   registerSubagentTool(pi, { agents: result.agents });
+  registerDebugSubagentPromptCommand(pi, { agents: result.agents });
 }
