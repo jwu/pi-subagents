@@ -19,9 +19,12 @@ export default async function (pi: ExtensionAPI) {
   const agentNames = agents.map((agent) => agent.name);
 
   if (!isPastMaxDepth(process.env) && agentNames.length > 0) {
-    pi.on('before_agent_start', (event) => ({
-      systemPrompt: appendAvailableSubagentsBlock(event.systemPrompt, agentNames),
-    }));
+    pi.on('before_agent_start', (event) => {
+      if (!event.systemPromptOptions.selectedTools?.includes('subagent')) return;
+      return {
+        systemPrompt: appendAvailableSubagentsBlock(event.systemPrompt, agentNames),
+      };
+    });
   }
 
   registerSubagentTool(pi, { agents: result.agents });

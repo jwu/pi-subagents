@@ -107,7 +107,7 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
     throw new Error(`invalid thinking: ${data.thinking}`);
   }
 
-  const systemPromptMode = (data.systemPrompt ?? 'replace') as SystemPromptMode;
+  const systemPromptMode = (data.systemPrompt ?? 'append') as SystemPromptMode;
   if (!['replace', 'append'].includes(systemPromptMode)) {
     throw new Error(`invalid systemPrompt: ${data.systemPrompt}`);
   }

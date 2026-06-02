@@ -50,11 +50,11 @@ Run the code-reviewer agent on the last three commits
 
 ### Available subagents in the prompt
 
-The extension exposes discovered sub-agents to the model in two places:
+The extension exposes discovered sub-agents to the model when the active tool set includes `subagent`:
 
 - The `subagent` tool keeps a one-line prompt guideline:
   `Available subagents: code-reviewer, refactor, test-writer`
-- The system prompt also gets an independent block:
+- At agent-start time, the system prompt gets an independent block:
 
 ```text
 Available subagents:
@@ -63,7 +63,7 @@ Available subagents:
 - test-writer
 ```
 
-For sub-agents launched with `systemPrompt: replace` or `systemPrompt: append`, the same block is written into the prompt passed via `--system-prompt` or `--append-system-prompt` when that agent has the `subagent` tool.
+For sub-agents launched with `systemPrompt: replace` or `systemPrompt: append`, the prompt file contains only the agent prompt plus skills. The `Available subagents` block is injected by the child process at agent-start time, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
 
 ### Debug a sub-agent prompt
 
@@ -73,7 +73,7 @@ Use the slash command to preview the generated sub-agent system prompt:
 /debug-subagent-prompt <agentName>
 ```
 
-The preview opens in your external editor (`$VISUAL` or `$EDITOR`) as a read-only temporary Markdown file. It shows the prompt content that pi-subagents writes for the child process, including injected `Available subagents` and `skills` blocks. For agents with `systemPrompt: append`, the preview shows only the appended content; pi's default system prompt is not included.
+The preview opens in your external editor (`$VISUAL` or `$EDITOR`) as a read-only temporary Markdown file. It shows the prompt content that pi-subagents writes for the child process, including injected `skills` blocks. Runtime `Available subagents` injection happens later in the child process. For agents with `systemPrompt: append`, the preview shows only the appended content; pi's default system prompt is not included.
 
 ## Agent configuration
 
@@ -86,7 +86,7 @@ Agents are Markdown files with YAML frontmatter.
 | `tools` | no | _none_ | Comma-separated tool whitelist (`read, write, bash, grep`, etc.) |
 | `model` | no | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`) |
 | `thinking` | no | `off` | Reasoning level: `off`, `low`, `medium`, `high` |
-| `systemPrompt` | no | `replace` | How the body is applied: `replace` (default system prompt) or `append` |
+| `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt) or `replace` |
 | `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |
 | `maxDepth` | no | `10` | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.) |
 
@@ -101,7 +101,7 @@ description: High-level planner that delegates to specialists
 tools: subagent, read, grep, find
 model: anthropic/claude-sonnet-4-6
 thinking: high
-systemPrompt: replace
+systemPrompt: append
 allowedAgents: code-reviewer, refactor, test-writer
 maxDepth: 2
 ---

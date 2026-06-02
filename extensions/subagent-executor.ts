@@ -5,7 +5,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from './agent-loader.ts';
-import { formatAvailableSubagentsBlock } from './subagent-prompt.ts';
 import { resolveSkills } from './skill-resolver.ts';
 
 export interface AgentUsage {
@@ -92,7 +91,6 @@ export interface RunSubagentOptions {
 export interface BuildSubagentSystemPromptOptions {
   agent: AgentConfig;
   cwd: string;
-  availableAgents?: string[];
   agentDir?: string;
 }
 
@@ -367,13 +365,6 @@ export async function buildSubagentSystemPrompt(
 ): Promise<BuildSubagentSystemPromptResult> {
   let prompt = options.agent.prompt;
 
-  const availableSubagentsBlock = formatAvailableSubagentsBlock(
-    availableSubagentsForAgent(options.agent, options.availableAgents),
-  );
-  if (availableSubagentsBlock) {
-    prompt = `${prompt.trimEnd()}\n\n${availableSubagentsBlock}`;
-  }
-
   const missingSkills: string[] = [];
   const skippedSkillPackages: string[] = [];
   const skillNames = options.agent.skills;
@@ -441,7 +432,6 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     const promptResult = await buildSubagentSystemPrompt({
       agent: options.agent,
       cwd: options.cwd,
-      availableAgents: options.availableAgents,
       agentDir: options.agentDir,
     });
     for (const source of promptResult.skippedSkillPackages) {
@@ -488,8 +478,9 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       PI_SUBAGENT_DEPTH: String(options.depth ?? 1),
       PI_SUBAGENT_MAX_DEPTH: String(options.agent.maxDepth),
     };
-    if (options.agent.tools.includes('subagent') && options.agent.allowedAgents?.length) {
-      env.PI_SUBAGENT_ALLOWED = options.agent.allowedAgents.join(',');
+    const visibleAgents = availableSubagentsForAgent(options.agent, options.availableAgents);
+    if (visibleAgents.length > 0) {
+      env.PI_SUBAGENT_ALLOWED = visibleAgents.join(',');
     }
 
     const processLine = (line: string) => {

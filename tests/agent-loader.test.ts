@@ -70,7 +70,7 @@ You inspect code quickly.
       name: 'minimal',
       tools: [],
       thinking: 'off',
-      systemPromptMode: 'replace',
+      systemPromptMode: 'append',
       maxDepth: 10,
     });
     expect(result.warnings).toEqual([

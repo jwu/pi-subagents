@@ -85,9 +85,8 @@ describe('registerDebugSubagentPromptCommand', () => {
       buildPrompt: async (options) => {
         expect(options.agent.name).toBe('scout');
         expect(options.cwd).toBe('/repo');
-        expect(options.availableAgents).toEqual(['reviewer']);
         return {
-          prompt: 'Scout.\n\nAvailable subagents:\n- reviewer',
+          prompt: 'Scout.',
           missingSkills: ['caveman'],
           skippedSkillPackages: ['npm:missing'],
         };
@@ -119,7 +118,7 @@ describe('registerDebugSubagentPromptCommand', () => {
     expect(previews[0].content).toContain(
       'Warnings:\n- package not installed, skipping skills: npm:missing\n- skill not found: caveman',
     );
-    expect(previews[0].content.endsWith('Scout.\n\nAvailable subagents:\n- reviewer')).toBe(true);
+    expect(previews[0].content.endsWith('Scout.')).toBe(true);
   });
 
   test('previews the exact prompt returned by the shared subagent prompt builder', async () => {

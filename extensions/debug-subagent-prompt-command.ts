@@ -6,7 +6,6 @@ import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-c
 import type { AgentConfig } from './agent-loader.ts';
 import { allowedAgentNames, isPastMaxDepth, type RecursionEnv } from './env-utils.ts';
 import {
-  availableSubagentsForAgent,
   buildSubagentSystemPrompt,
   type BuildSubagentSystemPromptResult,
 } from './subagent-executor.ts';
@@ -181,7 +180,6 @@ export function registerDebugSubagentPromptCommand(
       const result: BuildSubagentSystemPromptResult = await buildPrompt({
         agent,
         cwd: ctx.cwd,
-        availableAgents: availableSubagentsForAgent(agent, agentNames),
         agentDir: options.agentDir,
       });
       const warnings = [

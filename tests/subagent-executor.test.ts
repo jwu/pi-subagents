@@ -342,7 +342,7 @@ describe('runSubagent', () => {
     expect(removed).toEqual(['/tmp/pi-subagents-test/run-crash']);
   });
 
-  test('injects available subagents prompt but does not pass allowed env to agents without subagent tool', async () => {
+  test('writes isolated prompt and passes allowed env even without subagent tool', async () => {
     const calls: Array<{ env: NodeJS.ProcessEnv }> = [];
     const writes: Array<{ filePath: string; content: string }> = [];
 
@@ -373,12 +373,12 @@ describe('runSubagent', () => {
     });
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.\n\nAvailable subagents:\n- scout',
+      'You scout code.',
     );
-    expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBeUndefined();
+    expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBe('scout');
   });
 
-  test('injects available subagents into replace-mode system prompt when agent can delegate', async () => {
+  test('does not inject available subagents into replace-mode system prompt', async () => {
     const writes: Array<{ filePath: string; content: string }> = [];
 
     await runSubagent({
@@ -407,11 +407,11 @@ describe('runSubagent', () => {
     });
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.\n\nAvailable subagents:\n- scout\n- worker',
+      'You scout code.',
     );
   });
 
-  test('filters injected available subagents by agent allowedAgents', async () => {
+  test('filters allowed env by agent allowedAgents', async () => {
     const writes: Array<{ filePath: string; content: string }> = [];
 
     await runSubagent({
@@ -428,7 +428,8 @@ describe('runSubagent', () => {
         },
         removeDir: async () => undefined,
       },
-      runner: async (_invocation, handlers) => {
+      runner: async (invocation, handlers) => {
+        expect(invocation.env.PI_SUBAGENT_ALLOWED).toBe('scout');
         handlers.stdout(
           JSON.stringify({
             type: 'message_end',
@@ -440,7 +441,7 @@ describe('runSubagent', () => {
     });
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.\n\nAvailable subagents:\n- scout',
+      'You scout code.',
     );
   });
 
@@ -488,7 +489,7 @@ describe('runSubagent', () => {
     expect(writes).toEqual([
       {
         filePath: '/tmp/pi-subagents-test/run-2/system-prompt.md',
-        content: 'You scout code.\n\nAvailable subagents:\n- researcher\n- scout',
+        content: 'You scout code.',
       },
       { filePath: '/tmp/pi-subagents-test/run-2/task.md', content: longTask },
     ]);

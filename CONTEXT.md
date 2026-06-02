@@ -29,7 +29,7 @@ _避免使用_：tool list、tool set、tool configuration
 _避免使用_：skill prompt、capability file、instruction bundle
 
 **系统提示词模式（`systemPrompt`）**：
-控制代理的 Markdown 正文如何应用于子 pi 进程。`replace`（默认）通过 `--system-prompt` 传入正文，替换默认系统提示词。`append` 通过 `--append-system-prompt` 传入，追加到默认提示词之后。取值为 `replace` 或 `append`。
+控制代理的 Markdown 正文如何应用于子 pi 进程。`append`（默认）通过 `--append-system-prompt` 传入，追加到默认提示词之后。`replace` 通过 `--system-prompt` 传入正文，替换默认系统提示词。取值为 `replace` 或 `append`。
 _避免使用_：system prompt strategy、prompt injection mode
 
 **子代理系统提示词（Sub-agent system prompt）**：
@@ -37,7 +37,7 @@ _避免使用_：system prompt strategy、prompt injection mode
 _避免使用_：subagent prompt、agent prompt、child prompt
 
 **可用子代理提示（Available subagents prompt）**：
-向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；系统提示词中使用独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
+向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；当活动工具集包含 `subagent` 时，子进程在 agent-start hook 中向系统提示词追加独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
 _避免使用_：agent list prompt、subagent guideline only
 
 **模型（`model`）**：
