@@ -1,3 +1,19 @@
+# [1.3.0](https://github.com/jwu/pi-subagents/compare/v1.2.0...v1.3.0) (2026-06-02)
+
+
+### Bug Fixes
+
+* filter available subagents by allowed agents ([adc6025](https://github.com/jwu/pi-subagents/commit/adc60252d96ef532719a0da1c128a8e433c74bb7))
+* preserve append-mode subagent context ([ada0a26](https://github.com/jwu/pi-subagents/commit/ada0a264565d686917b73126301884345f824bce))
+
+
+### Features
+
+* add debug subagent prompt command ([1c49d43](https://github.com/jwu/pi-subagents/commit/1c49d43af9569856407e2a97d512d9d3b617e6d9))
+* default subagent prompts to append ([5693c17](https://github.com/jwu/pi-subagents/commit/5693c17b2aea4244b106bff82fe7ebd5c954322c))
+* export subagent debug prompts from frontmatter ([afe8b23](https://github.com/jwu/pi-subagents/commit/afe8b23700b9a86ef1db97463225cd828f884026))
+* resolve package skills for subagents ([48651e1](https://github.com/jwu/pi-subagents/commit/48651e15010c501cacec9a2e71771a13c0e7c9ab))
+
 # [1.2.0](https://github.com/jwu/pi-subagents/compare/v1.1.0...v1.2.0) (2026-06-02)
 
 
