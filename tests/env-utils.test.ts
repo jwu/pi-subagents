@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { allowedAgentNames, isPastMaxDepth, parseEnvNumber } from '../extensions/env-utils.ts';
+import {
+  allowedAgentNames,
+  isPastMaxDepth,
+  isSubagentProcess,
+  isSubagentReplaceSystemPrompt,
+  parseEnvNumber,
+  subagentSystemPromptMode,
+} from '../extensions/env-utils.ts';
 
 describe('parseEnvNumber', () => {
   test('returns undefined for undefined input', () => {
@@ -97,5 +104,37 @@ describe('isPastMaxDepth', () => {
 
   test('returns true when depth is 1 and maxDepth is 0', () => {
     expect(isPastMaxDepth({ PI_SUBAGENT_DEPTH: '1', PI_SUBAGENT_MAX_DEPTH: '0' })).toBe(true);
+  });
+});
+
+describe('subagent process env helpers', () => {
+  test('detects subagent process from positive depth', () => {
+    expect(isSubagentProcess({ PI_SUBAGENT_DEPTH: '1' })).toBe(true);
+    expect(isSubagentProcess({ PI_SUBAGENT_DEPTH: '0' })).toBe(false);
+    expect(isSubagentProcess({})).toBe(false);
+  });
+
+  test('parses only supported system prompt modes', () => {
+    expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace' })).toBe('replace');
+    expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'append' })).toBe('append');
+    expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'other' })).toBeUndefined();
+  });
+
+  test('detects replace-mode subagent process', () => {
+    expect(
+      isSubagentReplaceSystemPrompt({
+        PI_SUBAGENT_DEPTH: '1',
+        PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace',
+      }),
+    ).toBe(true);
+    expect(
+      isSubagentReplaceSystemPrompt({
+        PI_SUBAGENT_DEPTH: '1',
+        PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'append',
+      }),
+    ).toBe(false);
+    expect(isSubagentReplaceSystemPrompt({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace' })).toBe(
+      false,
+    );
   });
 });

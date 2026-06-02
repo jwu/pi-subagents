@@ -29,19 +29,19 @@ _避免使用_：tool list、tool set、tool configuration
 _避免使用_：skill prompt、capability file、instruction bundle
 
 **系统提示词模式（`systemPrompt`）**：
-控制代理的 Markdown 正文如何应用于子 pi 进程。`append`（默认）通过 `--append-system-prompt` 传入，追加到默认提示词之后。`replace` 通过 `--system-prompt` 传入正文，替换默认系统提示词。取值为 `replace` 或 `append`。
+控制代理的 Markdown 正文如何应用于子 pi 进程。`append`（默认）通过 `--append-system-prompt` 传入，保留 pi 默认提示词与项目上下文文件（如 AGENTS.md），再追加代理正文。`replace` 通过 `--system-prompt` 传入正文，替换默认系统提示词并跳过项目上下文文件；为避免工具可见性丢失，子进程会在 `before_agent_start` 中重新注入当前活动工具对应的 `Available tools` 与 `Guidelines` 块。取值为 `replace` 或 `append`。
 _避免使用_：system prompt strategy、prompt injection mode
 
 **子代理系统提示词（Sub-agent system prompt）**：
-子代理启动时接收的系统级指令，由代理定义及子代理可用资源提示组成。用于预览与核对子代理会话开始前的行为边界。
+子代理启动时接收的系统级指令，由代理定义、系统提示词模式以及子代理可用资源提示共同组成。`append` 模式包含 pi 默认提示词与项目上下文；`replace` 模式以代理正文为主体，并由运行时 hook 补回工具与指南块。用于预览与核对子代理会话开始前的行为边界。
 _避免使用_：subagent prompt、agent prompt、child prompt
 
 **调试导出（Debug export）**：
-对子代理运行时有效系统提示词的文件化快照，用于核对子代理实际接收到的行为边界。
+对子代理运行时有效系统提示词的文件化快照，用于核对子代理实际接收到的行为边界。`append` 模式的导出应包含项目上下文文件；`replace` 模式的导出不包含项目上下文文件，但应包含由运行时注入的工具与指南块。
 _避免使用_：prompt preview、debug command output
 
 **可用子代理提示（Available subagents prompt）**：
-向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；当活动工具集包含 `subagent` 时，子进程在 agent-start hook 中向系统提示词追加独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
+向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；当活动工具集包含 `subagent` 时，子进程在 `before_agent_start` hook 中向系统提示词追加独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
 _避免使用_：agent list prompt、subagent guideline only
 
 **模型（`model`）**：

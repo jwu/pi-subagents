@@ -63,7 +63,12 @@ Available subagents:
 - test-writer
 ```
 
-For sub-agents launched with `systemPrompt: replace` or `systemPrompt: append`, the prompt file contains only the agent prompt plus skills. The `Available subagents` block is injected by the child process at agent-start time, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
+The prompt file passed to the child process contains only the agent prompt plus skills. Runtime prompt assembly then depends on `systemPrompt` mode:
+
+- `append`: the child process uses pi's default prompt and project context files, then appends the agent prompt.
+- `replace`: the child process replaces pi's default prompt with the agent prompt and skips project context files; pi-subagents reinjects the active `Available tools` and `Guidelines` blocks at agent-start time so custom replace prompts still expose the selected tool affordances.
+
+The `Available subagents` block is injected by the child process at agent-start time, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
 
 ### Debug a sub-agent prompt
 
@@ -76,7 +81,7 @@ debug: true
 ---
 ```
 
-The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including pi's default prompt, `systemPrompt` append/replace behavior, tools, skills, and pi-subagents' runtime `Available subagents` block when applicable.
+The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including `systemPrompt` append/replace behavior, tools/guidelines, skills, project context files in append mode, and pi-subagents' runtime `Available subagents` block when applicable.
 
 ## Agent configuration
 
@@ -89,7 +94,7 @@ Agents are Markdown files with YAML frontmatter.
 | `tools` | no | _none_ | Comma-separated tool whitelist (`read, write, bash, grep`, etc.) |
 | `model` | no | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`) |
 | `thinking` | no | `off` | Reasoning level: `off`, `low`, `medium`, `high` |
-| `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt) or `replace` |
+| `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt and project context) or `replace` (replace default prompt and skip project context) |
 | `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |
 | `maxDepth` | no | `10` | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.) |
 | `debug` | no | `false` | When `true`, export the effective runtime system prompt to `debug-system-prompt.md` |
@@ -136,7 +141,7 @@ Sub-agents can spawn their own sub-agents (if the `subagent` tool is in their wh
 
 The available-subagents prompt entries respect the same filtering: parent sessions use the currently visible agents, and child sessions only list agents allowed by their parent.
 
-These are passed via environment variables (`PI_SUBAGENT_DEPTH`, `PI_SUBAGENT_MAX_DEPTH`, `PI_SUBAGENT_ALLOWED`).
+These are passed via environment variables (`PI_SUBAGENT_DEPTH`, `PI_SUBAGENT_MAX_DEPTH`, `PI_SUBAGENT_ALLOWED`). Child processes also receive `PI_SUBAGENT_NAME` and `PI_SUBAGENT_SYSTEM_PROMPT_MODE` so runtime hooks can distinguish append vs. replace behavior.
 
 ## Session storage
 

@@ -2,8 +2,11 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadAgentDefinitions } from './agent-loader.ts';
-import { allowedAgentNames, isPastMaxDepth } from './env-utils.ts';
-import { appendAvailableSubagentsBlock } from './subagent-prompt.ts';
+import { allowedAgentNames, isPastMaxDepth, isSubagentReplaceSystemPrompt } from './env-utils.ts';
+import {
+  appendAvailableSubagentsBlock,
+  appendAvailableToolsAndGuidelinesBlock,
+} from './subagent-prompt.ts';
 import { registerSubagentTool } from './subagent-tool.ts';
 
 export default async function (pi: ExtensionAPI) {
@@ -18,6 +21,17 @@ export default async function (pi: ExtensionAPI) {
     ? result.agents.filter((candidate) => allowed.has(candidate.name))
     : result.agents;
   const agentNames = agents.map((agent) => agent.name);
+
+  if (isSubagentReplaceSystemPrompt(process.env)) {
+    pi.on('before_agent_start', (event) => {
+      return {
+        systemPrompt: appendAvailableToolsAndGuidelinesBlock(
+          event.systemPrompt,
+          event.systemPromptOptions,
+        ),
+      };
+    });
+  }
 
   if (!isPastMaxDepth(process.env) && agentNames.length > 0) {
     pi.on('before_agent_start', (event) => {

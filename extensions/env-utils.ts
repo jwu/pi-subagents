@@ -1,5 +1,14 @@
+export type SystemPromptModeEnv = 'replace' | 'append';
+
 export type RecursionEnv = Partial<
-  Record<'PI_SUBAGENT_ALLOWED' | 'PI_SUBAGENT_DEPTH' | 'PI_SUBAGENT_MAX_DEPTH', string>
+  Record<
+    | 'PI_SUBAGENT_ALLOWED'
+    | 'PI_SUBAGENT_DEPTH'
+    | 'PI_SUBAGENT_MAX_DEPTH'
+    | 'PI_SUBAGENT_NAME'
+    | 'PI_SUBAGENT_SYSTEM_PROMPT_MODE',
+    string
+  >
 >;
 
 export function parseEnvNumber(value: string | undefined): number | undefined {
@@ -23,4 +32,19 @@ export function isPastMaxDepth(env: RecursionEnv): boolean {
   const depth = parseEnvNumber(env?.PI_SUBAGENT_DEPTH);
   const maxDepth = parseEnvNumber(env?.PI_SUBAGENT_MAX_DEPTH);
   return depth !== undefined && maxDepth !== undefined && depth > maxDepth;
+}
+
+export function isSubagentProcess(env: RecursionEnv): boolean {
+  const depth = parseEnvNumber(env?.PI_SUBAGENT_DEPTH);
+  return depth !== undefined && depth > 0;
+}
+
+export function subagentSystemPromptMode(env: RecursionEnv): SystemPromptModeEnv | undefined {
+  const mode = env?.PI_SUBAGENT_SYSTEM_PROMPT_MODE;
+  if (mode === 'replace' || mode === 'append') return mode;
+  return undefined;
+}
+
+export function isSubagentReplaceSystemPrompt(env: RecursionEnv): boolean {
+  return isSubagentProcess(env) && subagentSystemPromptMode(env) === 'replace';
 }

@@ -83,6 +83,8 @@ describe('runSubagent', () => {
     expect(calls[0].cwd).toBe('/repo');
     expect(calls[0].env.PI_SUBAGENT_DEPTH).toBe('1');
     expect(calls[0].env.PI_SUBAGENT_MAX_DEPTH).toBe('3');
+    expect(calls[0].env.PI_SUBAGENT_NAME).toBe('scout');
+    expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace');
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('false');
   });
 
@@ -506,6 +508,7 @@ describe('runSubagent', () => {
       runner: async (invocation, handlers) => {
         calls.push({ args: invocation.args });
         expect(invocation.env.PI_SUBAGENT_ALLOWED).toBe('scout,researcher');
+        expect(invocation.env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('append');
         handlers.stdout(
           JSON.stringify({
             type: 'message_end',
@@ -525,6 +528,7 @@ describe('runSubagent', () => {
       { filePath: '/tmp/pi-subagents-test/run-2/task.md', content: longTask },
     ]);
     expect(calls[0].args).toContain('--append-system-prompt');
+    expect(calls[0].args).not.toContain('--no-context-files');
     expect(calls[0].args).toContain('Task: @/tmp/pi-subagents-test/run-2/task.md');
     expect(removed).toEqual(['/tmp/pi-subagents-test/run-2']);
   });

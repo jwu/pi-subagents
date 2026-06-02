@@ -453,16 +453,9 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       AuthStorage.create(options.agentDir ? path.join(options.agentDir, 'auth.json') : undefined),
       options.agentDir ? path.join(options.agentDir, 'models.json') : undefined,
     );
-    const args = [
-      pi.entryPoint,
-      '--mode',
-      'json',
-      '-p',
-      '--no-skills',
-      '--no-prompt-templates',
-      '--no-context-files',
-    ];
+    const args = [pi.entryPoint, '--mode', 'json', '-p', '--no-skills', '--no-prompt-templates'];
 
+    if (options.agent.systemPromptMode === 'replace') args.push('--no-context-files');
     if (options.agent.model) args.push('--model', options.agent.model);
     args.push('--thinking', options.agent.thinking);
     if (options.agent.tools.length > 0) args.push('--tools', options.agent.tools.join(','));
@@ -477,6 +470,8 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       ...process.env,
       PI_SUBAGENT_DEPTH: String(options.depth ?? 1),
       PI_SUBAGENT_MAX_DEPTH: String(options.agent.maxDepth),
+      PI_SUBAGENT_NAME: options.agent.name,
+      PI_SUBAGENT_SYSTEM_PROMPT_MODE: options.agent.systemPromptMode,
     };
     const visibleAgents = availableSubagentsForAgent(options.agent, options.availableAgents);
     if (visibleAgents.length > 0) {
