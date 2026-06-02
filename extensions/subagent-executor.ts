@@ -98,6 +98,7 @@ export interface BuildSubagentSystemPromptResult {
   prompt: string;
   missingSkills: string[];
   skippedSkillPackages: string[];
+  skillWarnings: string[];
 }
 
 const TASK_FILE_THRESHOLD = 8000;
@@ -367,6 +368,7 @@ export async function buildSubagentSystemPrompt(
 
   const missingSkills: string[] = [];
   const skippedSkillPackages: string[] = [];
+  const skillWarnings: string[] = [];
   const skillNames = options.agent.skills;
   if (skillNames && skillNames.length > 0) {
     const resolvedSkills = await resolveSkills(skillNames, {
@@ -375,6 +377,7 @@ export async function buildSubagentSystemPrompt(
     });
     missingSkills.push(...resolvedSkills.missing);
     skippedSkillPackages.push(...resolvedSkills.skippedPackages);
+    skillWarnings.push(...resolvedSkills.warnings);
 
     const skillInjection = formatSkillsForPrompt(resolvedSkills.resolved);
     if (skillInjection) {
@@ -382,7 +385,7 @@ export async function buildSubagentSystemPrompt(
     }
   }
 
-  return { prompt, missingSkills, skippedSkillPackages };
+  return { prompt, missingSkills, skippedSkillPackages, skillWarnings };
 }
 
 function progressFromPartialResult(partialResult: unknown): AgentProgress | undefined {
@@ -436,6 +439,9 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     });
     for (const source of promptResult.skippedSkillPackages) {
       console.warn(`[pi-subagents] package not installed, skipping skills: ${source}`);
+    }
+    for (const warning of promptResult.skillWarnings) {
+      console.warn(`[pi-subagents] ${warning}`);
     }
     for (const name of promptResult.missingSkills) {
       console.warn(`[pi-subagents] skill not found: ${name}`);

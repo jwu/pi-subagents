@@ -17,6 +17,7 @@ export interface ResolvedSkill {
 export interface SkillResolverFs {
   exists(filePath: string): boolean;
   readFile(filePath: string): string;
+  listFiles?(dir: string): string[];
 }
 
 export interface ResolveSkillsOptions {
@@ -31,6 +32,7 @@ export interface ResolveSkillsResult {
   resolved: ResolvedSkill[];
   missing: string[];
   skippedPackages: string[];
+  warnings: string[];
 }
 
 const defaultSkillFs: SkillResolverFs = {
@@ -39,6 +41,16 @@ const defaultSkillFs: SkillResolverFs = {
   },
   readFile(filePath) {
     return fs.readFileSync(filePath, 'utf-8');
+  },
+  listFiles(dir) {
+    try {
+      return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .map((entry) => path.join(dir, entry.name))
+        .sort();
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -89,33 +101,7 @@ function parseSkillFrontmatter(content: string): { name: string; description: st
   }
   delete data._currentBlockKey;
 
-  if (!data.description || !data.description.trim()) return undefined;
-  return { name: data.name || '', description: data.description.trim() };
-}
-
-function findLocalSkillFile(
-  skillName: string,
-  cwd: string,
-  globalDir: string,
-  fileSystem: SkillResolverFs,
-): string | undefined {
-  // Priority 1: Project .agents/skills/<name>/SKILL.md
-  const projectAgentsPath = path.join(cwd, '.agents', 'skills', skillName, 'SKILL.md');
-  if (fileSystem.exists(projectAgentsPath)) return projectAgentsPath;
-
-  // Priority 1: Project .pi/skills/<name>/SKILL.md
-  const projectPiPath = path.join(cwd, '.pi', 'skills', skillName, 'SKILL.md');
-  if (fileSystem.exists(projectPiPath)) return projectPiPath;
-
-  // Priority 4: Global ~/.pi/agent/skills/<name>/SKILL.md
-  const globalPiPath = path.join(globalDir, skillName, 'SKILL.md');
-  if (fileSystem.exists(globalPiPath)) return globalPiPath;
-
-  // Priority 4: Global ~/.agents/skills/<name>/SKILL.md
-  const globalAgentsPath = path.join(os.homedir(), '.agents', 'skills', skillName, 'SKILL.md');
-  if (fileSystem.exists(globalAgentsPath)) return globalAgentsPath;
-
-  return undefined;
+  return { name: data.name || '', description: (data.description ?? '').trim() };
 }
 
 async function resolvePackageSkillFiles(options: ResolveSkillsOptions): Promise<{
@@ -150,79 +136,165 @@ async function resolvePackageSkillFiles(options: ResolveSkillsOptions): Promise<
   };
 }
 
-function readSkill(
-  filePath: string,
-  requestedName: string,
-  fileSystem: SkillResolverFs,
-  requireNameMatch: boolean,
-): ResolvedSkill | undefined {
+interface ReadSkillResult {
+  skill?: ResolvedSkill;
+  warning?: string;
+}
+
+function readSkill(filePath: string, fileSystem: SkillResolverFs): ReadSkillResult | undefined {
   const content = fileSystem.readFile(filePath);
   const frontmatter = parseSkillFrontmatter(content);
   if (!frontmatter) return undefined;
 
-  const fileSkillName = frontmatter.name || path.basename(path.dirname(filePath));
-  const markdownName = path.basename(filePath, '.md');
-  if (requireNameMatch && fileSkillName !== requestedName && markdownName !== requestedName) {
-    return undefined;
+  const fileSkillName = frontmatter.name.trim();
+  if (!fileSkillName) {
+    return { warning: `skill missing required field: name: ${filePath}` };
   }
+  if (!frontmatter.description) return undefined;
 
   return {
-    name: fileSkillName || requestedName,
-    description: frontmatter.description,
-    location: filePath,
+    skill: {
+      name: fileSkillName,
+      description: frontmatter.description,
+      location: filePath,
+    },
   };
+}
+
+interface CollectedSkills {
+  byName: Map<string, ResolvedSkill>;
+  warnings: string[];
+  skippedPackages: string[];
+}
+
+const collectedSkillsCache = new Map<string, Promise<CollectedSkills>>();
+
+function listSkillFilesInDir(dir: string, fileSystem: SkillResolverFs): string[] {
+  if (!fileSystem.listFiles) return [];
+
+  return fileSystem
+    .listFiles(dir)
+    .map((entry) => path.join(entry, 'SKILL.md'))
+    .filter((filePath) => fileSystem.exists(filePath));
+}
+
+function addSkillFile(
+  filePath: string,
+  fileSystem: SkillResolverFs,
+  byName: Map<string, ResolvedSkill>,
+  warnings: string[],
+): void {
+  try {
+    const result = readSkill(filePath, fileSystem);
+    if (!result) return;
+    if (result.warning) warnings.push(result.warning);
+    if (result.skill && !byName.has(result.skill.name)) byName.set(result.skill.name, result.skill);
+  } catch (error) {
+    warnings.push(
+      `skill could not be read: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function collectSkills(options: ResolveSkillsOptions): Promise<CollectedSkills> {
+  const cwd = options.cwd;
+  const globalDir = options.globalDir ?? defaultGlobalSkillsDir();
+  const fileSystem = options.fs ?? defaultSkillFs;
+  const byName = new Map<string, ResolvedSkill>();
+  const warnings: string[] = [];
+
+  for (const dir of [
+    path.join(cwd, '.agents', 'skills'),
+    path.join(cwd, '.pi', 'skills'),
+    globalDir,
+    path.join(os.homedir(), '.agents', 'skills'),
+  ]) {
+    for (const filePath of listSkillFilesInDir(dir, fileSystem)) {
+      addSkillFile(filePath, fileSystem, byName, warnings);
+    }
+  }
+
+  const packageSkills = await resolvePackageSkillFiles(options);
+  for (const filePath of packageSkills.files) {
+    addSkillFile(filePath, fileSystem, byName, warnings);
+  }
+
+  return { byName, warnings, skippedPackages: packageSkills.skippedPackages };
+}
+
+function skillsCacheKey(options: ResolveSkillsOptions): string | undefined {
+  if (options.fs) return undefined;
+  return JSON.stringify({
+    cwd: options.cwd,
+    agentDir: options.agentDir,
+    globalDir: options.globalDir ?? defaultGlobalSkillsDir(),
+    packageSkillFiles: options.packageSkillFiles,
+  });
+}
+
+async function getCollectedSkills(options: ResolveSkillsOptions): Promise<CollectedSkills> {
+  const cacheKey = skillsCacheKey(options);
+  if (!cacheKey) return collectSkills(options);
+
+  let cached = collectedSkillsCache.get(cacheKey);
+  if (!cached) {
+    cached = collectSkills(options);
+    collectedSkillsCache.set(cacheKey, cached);
+  }
+  return cached;
+}
+
+function wildcardToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+function hasWildcard(pattern: string): boolean {
+  return pattern.includes('*');
 }
 
 export async function resolveSkills(
   skillNames: string[],
   options: ResolveSkillsOptions,
 ): Promise<ResolveSkillsResult> {
-  const cwd = options.cwd;
-  const globalDir = options.globalDir ?? defaultGlobalSkillsDir();
-  const fileSystem = options.fs ?? defaultSkillFs;
+  const requestedNames = skillNames.map((name) => name.trim()).filter(Boolean);
+  if (requestedNames.length === 0) {
+    return { resolved: [], missing: [], skippedPackages: [], warnings: [] };
+  }
+
+  const collected = await getCollectedSkills(options);
   const resolved: ResolvedSkill[] = [];
   const missing: string[] = [];
-  const pendingPackageResolution: string[] = [];
+  const seen = new Set<string>();
 
-  for (const name of skillNames) {
-    const trimmed = name.trim();
-    if (!trimmed) continue;
-
-    const localFilePath = findLocalSkillFile(trimmed, cwd, globalDir, fileSystem);
-    if (localFilePath) {
-      try {
-        const skill = readSkill(localFilePath, trimmed, fileSystem, false);
-        if (skill) {
-          resolved.push(skill);
-          continue;
-        }
-      } catch {
-        // Try package skills before marking the skill as missing.
-      }
-    }
-
-    pendingPackageResolution.push(trimmed);
+  function addSkill(skill: ResolvedSkill): void {
+    if (seen.has(skill.name)) return;
+    seen.add(skill.name);
+    resolved.push(skill);
   }
 
-  const packageSkills =
-    pendingPackageResolution.length > 0
-      ? await resolvePackageSkillFiles(options)
-      : { files: [], skippedPackages: [] };
-
-  for (const trimmed of pendingPackageResolution) {
-    let packageSkill: ResolvedSkill | undefined;
-    for (const filePath of packageSkills.files) {
-      try {
-        packageSkill = readSkill(filePath, trimmed, fileSystem, true);
-        if (packageSkill) break;
-      } catch {
-        // Try the next package skill file.
+  for (const requestedName of requestedNames) {
+    if (hasWildcard(requestedName)) {
+      const regex = wildcardToRegex(requestedName);
+      let matched = false;
+      for (const skill of collected.byName.values()) {
+        if (!regex.test(skill.name)) continue;
+        matched = true;
+        addSkill(skill);
       }
+      if (!matched) missing.push(requestedName);
+      continue;
     }
 
-    if (packageSkill) resolved.push(packageSkill);
-    else missing.push(trimmed);
+    const skill = collected.byName.get(requestedName);
+    if (skill) addSkill(skill);
+    else missing.push(requestedName);
   }
 
-  return { resolved, missing, skippedPackages: packageSkills.skippedPackages };
+  return {
+    resolved,
+    missing,
+    skippedPackages: collected.skippedPackages,
+    warnings: collected.warnings,
+  };
 }

@@ -95,11 +95,14 @@ Agents are Markdown files with YAML frontmatter.
 | `model` | no | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`) |
 | `thinking` | no | `off` | Reasoning level: `off`, `low`, `medium`, `high` |
 | `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt and project context) or `replace` (replace default prompt and skip project context) |
+| `skills` | no | _none_ | Comma-separated skill names or simple wildcard patterns (`*`, `obsidian-*`) to load (resolved from project `.agents/skills/`, `.pi/skills/`, global `~/.pi/agent/skills/`, or npm packages) |
 | `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |
 | `maxDepth` | no | `10` | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.) |
 | `debug` | no | `false` | When `true`, export the effective runtime system prompt to `debug-system-prompt.md` |
 
 The Markdown body after the frontmatter is the agent's system prompt.
+
+`skills` entries match the skill frontmatter `name`. Use `skills: *` to load all available skills, or prefix-style patterns such as `skills: obsidian-*` to load matching skills. Only `*` is supported as a wildcard; glob features like `?` or `{a,b}` are not supported.
 
 ### Example with all fields
 
@@ -111,6 +114,7 @@ tools: subagent, read, grep, find
 model: anthropic/claude-sonnet-4-6
 thinking: high
 systemPrompt: append
+skills: tdd, obsidian-*
 allowedAgents: code-reviewer, refactor, test-writer
 maxDepth: 2
 debug: false

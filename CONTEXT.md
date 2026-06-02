@@ -25,7 +25,7 @@ _避免使用_：subagent_agents、agent allowlist、spawn restriction
 _避免使用_：tool list、tool set、tool configuration
 
 **技能（Skill）**：
-可按需加载的能力包，为代理提供特定任务的工作流、说明和引用资料。代理声明技能名称后，子代理启动时会收到可用技能列表，并在任务匹配时读取对应技能文件。
+可按需加载的能力包，为代理提供特定任务的工作流、说明和引用资料。技能以 frontmatter 中的 `name` 作为唯一身份；没有 `name` 的技能定义无效。代理可声明精确技能名称，也可用简单通配符（如 `*`、`lark-*`）声明一组技能。子代理启动时会收到可用技能列表，并在任务匹配时读取对应技能文件。
 _避免使用_：skill prompt、capability file、instruction bundle
 
 **系统提示词模式（`systemPrompt`）**：

@@ -12,6 +12,17 @@ function mockFs(files: Record<string, string>): SkillResolverFs {
       if (content === undefined) throw new Error(`File not found: ${filePath}`);
       return content;
     },
+    listFiles(dir) {
+      const prefix = `${dir}/`;
+      const children = new Set<string>();
+      for (const filePath of Object.keys(files)) {
+        if (!filePath.startsWith(prefix)) continue;
+        const relative = filePath.slice(prefix.length);
+        const [child] = relative.split('/');
+        if (child) children.add(path.join(dir, child));
+      }
+      return [...children].sort();
+    },
   };
 }
 
@@ -90,6 +101,110 @@ describe('resolveSkills', () => {
 
     expect(resolved).toEqual([]);
     expect(missing).toEqual(['no-desc']);
+  });
+
+  test('resolves all available skills with wildcard star', async () => {
+    const { resolved, missing } = await resolveSkills(['*'], {
+      cwd: '/project',
+      globalDir: '/home/.pi/agent/skills',
+      fs: mockFs({
+        '/project/.agents/skills/project-skill/SKILL.md':
+          '---\nname: project-skill\ndescription: project skill\n---\nProject body.\n',
+        '/home/.pi/agent/skills/global-skill/SKILL.md':
+          '---\nname: global-skill\ndescription: global skill\n---\nGlobal body.\n',
+        '/package/skills/package-skill/SKILL.md':
+          '---\nname: package-skill\ndescription: package skill\n---\nPackage body.\n',
+      }),
+      packageSkillFiles: ['/package/skills/package-skill/SKILL.md'],
+    });
+
+    expect(missing).toEqual([]);
+    expect(resolved.map((skill) => skill.name).sort()).toEqual([
+      'global-skill',
+      'package-skill',
+      'project-skill',
+    ]);
+  });
+
+  test('resolves skills matching a simple wildcard prefix', async () => {
+    const { resolved, missing } = await resolveSkills(['lark-*'], {
+      cwd: '/project',
+      fs: mockFs({
+        '/project/.agents/skills/lark-docs/SKILL.md':
+          '---\nname: lark-docs\ndescription: Lark docs\n---\nDocs body.\n',
+        '/project/.agents/skills/lark-chat/SKILL.md':
+          '---\nname: lark-chat\ndescription: Lark chat\n---\nChat body.\n',
+        '/project/.agents/skills/not-lark/SKILL.md':
+          '---\nname: not-lark\ndescription: Not Lark\n---\nOther body.\n',
+      }),
+    });
+
+    expect(missing).toEqual([]);
+    expect(resolved.map((skill) => skill.name).sort()).toEqual(['lark-chat', 'lark-docs']);
+  });
+
+  test('reports a wildcard pattern as missing when it matches no skills', async () => {
+    const { resolved, missing } = await resolveSkills(['lark-*'], {
+      cwd: '/project',
+      fs: mockFs({
+        '/project/.agents/skills/github/SKILL.md':
+          '---\nname: github\ndescription: GitHub\n---\nGitHub body.\n',
+      }),
+    });
+
+    expect(resolved).toEqual([]);
+    expect(missing).toEqual(['lark-*']);
+  });
+
+  test('deduplicates skills matched by both exact names and wildcards', async () => {
+    const { resolved, missing } = await resolveSkills(['lark-docs', 'lark-*'], {
+      cwd: '/project',
+      fs: mockFs({
+        '/project/.agents/skills/lark-docs/SKILL.md':
+          '---\nname: lark-docs\ndescription: Lark docs\n---\nDocs body.\n',
+        '/project/.agents/skills/lark-chat/SKILL.md':
+          '---\nname: lark-chat\ndescription: Lark chat\n---\nChat body.\n',
+      }),
+    });
+
+    expect(missing).toEqual([]);
+    expect(resolved.map((skill) => skill.name)).toEqual(['lark-docs', 'lark-chat']);
+  });
+
+  test('keeps source priority when wildcard matches duplicate skill names', async () => {
+    const { resolved, missing } = await resolveSkills(['shared-*'], {
+      cwd: '/project',
+      globalDir: '/home/.pi/agent/skills',
+      fs: mockFs({
+        '/project/.agents/skills/shared-skill/SKILL.md':
+          '---\nname: shared-skill\ndescription: project version\n---\nProject body.\n',
+        '/home/.pi/agent/skills/shared-skill/SKILL.md':
+          '---\nname: shared-skill\ndescription: global version\n---\nGlobal body.\n',
+        '/package/skills/shared-skill/SKILL.md':
+          '---\nname: shared-skill\ndescription: package version\n---\nPackage body.\n',
+      }),
+      packageSkillFiles: ['/package/skills/shared-skill/SKILL.md'],
+    });
+
+    expect(missing).toEqual([]);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].description).toBe('project version');
+  });
+
+  test('treats a skill without frontmatter name as invalid with a warning', async () => {
+    const { resolved, missing, warnings } = await resolveSkills(['no-name'], {
+      cwd: '/project',
+      fs: mockFs({
+        '/project/.agents/skills/no-name/SKILL.md':
+          '---\ndescription: Missing name\n---\nNo name body.\n',
+      }),
+    });
+
+    expect(resolved).toEqual([]);
+    expect(missing).toEqual(['no-name']);
+    expect(warnings).toEqual([
+      'skill missing required field: name: /project/.agents/skills/no-name/SKILL.md',
+    ]);
   });
 
   test('falls back to enabled package skill files by frontmatter name', async () => {
