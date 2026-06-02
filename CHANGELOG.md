@@ -1,3 +1,11 @@
+# [1.2.0](https://github.com/jwu/pi-subagents/compare/v1.1.0...v1.2.0) (2026-06-02)
+
+
+### Features
+
+* agent skills frontmatter support ([e479b0c](https://github.com/jwu/pi-subagents/commit/e479b0cc57c8097a89f73b491c32a099ba56bc77))
+* expose available subagents in prompts ([047035a](https://github.com/jwu/pi-subagents/commit/047035a49e9749dc719a97f2556be9f60551cf97))
+
 # [1.1.0](https://github.com/jwu/pi-subagents/compare/v1.0.1...v1.1.0) (2026-05-31)
 
 
