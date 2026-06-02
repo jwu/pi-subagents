@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/jwu/pi-subagents/compare/v1.3.0...v1.4.0) (2026-06-02)
+
+
+### Features
+
+* support wildcard skills ([962eaa4](https://github.com/jwu/pi-subagents/commit/962eaa486cd73342629cfecf4e7bcc8a1ceb4710))
+
 # [1.3.0](https://github.com/jwu/pi-subagents/compare/v1.2.0...v1.3.0) (2026-06-02)
 
 
