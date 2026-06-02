@@ -11,6 +11,7 @@ const baseAgent: AgentConfig = {
   thinking: 'low',
   systemPromptMode: 'replace',
   maxDepth: 3,
+  debug: false,
   prompt: 'You scout code.',
   source: 'global',
   filePath: '/agents/scout.md',
@@ -82,6 +83,7 @@ describe('runSubagent', () => {
     expect(calls[0].cwd).toBe('/repo');
     expect(calls[0].env.PI_SUBAGENT_DEPTH).toBe('1');
     expect(calls[0].env.PI_SUBAGENT_MAX_DEPTH).toBe('3');
+    expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('false');
   });
 
   test('truncates oversized output and writes the complete output to a readable temp file', async () => {
@@ -376,6 +378,35 @@ describe('runSubagent', () => {
       'You scout code.',
     );
     expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBe('scout');
+  });
+
+  test('passes debug env when agent debug is enabled', async () => {
+    const calls: Array<{ env: NodeJS.ProcessEnv }> = [];
+
+    await runSubagent({
+      agent: { ...baseAgent, debug: true },
+      task: 'List files',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-debug',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (invocation, handlers) => {
+        calls.push({ env: invocation.env });
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('true');
   });
 
   test('does not inject available subagents into replace-mode system prompt', async () => {

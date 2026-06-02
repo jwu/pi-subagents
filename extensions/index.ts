@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { loadAgentDefinitions } from './agent-loader.ts';
 import { allowedAgentNames, isPastMaxDepth } from './env-utils.ts';
-import { registerDebugSubagentPromptCommand } from './debug-subagent-prompt-command.ts';
 import { appendAvailableSubagentsBlock } from './subagent-prompt.ts';
 import { registerSubagentTool } from './subagent-tool.ts';
 
@@ -27,6 +28,13 @@ export default async function (pi: ExtensionAPI) {
     });
   }
 
+  if (process.env.PI_SUBAGENT_DEBUG === 'true') {
+    pi.on('before_agent_start', (_event, ctx) => {
+      const prompt = ctx.getSystemPrompt();
+      const outputPath = path.join(ctx.cwd, 'debug-system-prompt.md');
+      fs.writeFileSync(outputPath, prompt, 'utf-8');
+    });
+  }
+
   registerSubagentTool(pi, { agents: result.agents });
-  registerDebugSubagentPromptCommand(pi, { agents: result.agents });
 }

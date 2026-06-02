@@ -42,6 +42,7 @@ You inspect code quickly.
       systemPromptMode: 'append',
       allowedAgents: ['scout', 'researcher'],
       maxDepth: 2,
+      debug: false,
       prompt: 'You inspect code quickly.\n',
       source: 'global',
       filePath: '/home/me/.pi/agent/agents/scout.md',
@@ -72,6 +73,7 @@ You inspect code quickly.
       thinking: 'off',
       systemPromptMode: 'append',
       maxDepth: 10,
+      debug: false,
     });
     expect(result.warnings).toEqual([
       { filePath: '/global/broken.md', message: 'invalid frontmatter line: name broken' },
@@ -98,6 +100,45 @@ You inspect code quickly.
     expect(result.agents[0]).toMatchObject({ name: 'thinker', thinking: 'high' });
     expect(result.warnings).toEqual([
       { filePath: '/global/noname.md', message: 'missing required field: name' },
+    ]);
+  });
+
+  test('parses debug field from frontmatter', async () => {
+    const files = new Map<string, string>([
+      ['/project/debugger.md', '---\nname: debugger\ndebug: true\n---\nDebug prompt.\n'],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.agents[0].debug).toBe(true);
+  });
+
+  test('rejects invalid debug frontmatter values', async () => {
+    const files = new Map<string, string>([
+      ['/global/invalid-debug.md', '---\nname: invalid-debug\ndebug: yes\n---\nInvalid.\n'],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.agents).toEqual([]);
+    expect(result.warnings).toEqual([
+      { filePath: '/global/invalid-debug.md', message: 'invalid debug: yes' },
     ]);
   });
 

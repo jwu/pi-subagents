@@ -482,6 +482,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     if (visibleAgents.length > 0) {
       env.PI_SUBAGENT_ALLOWED = visibleAgents.join(',');
     }
+    env.PI_SUBAGENT_DEBUG = options.agent.debug ? 'true' : 'false';
 
     const processLine = (line: string) => {
       if (!line.trim()) return;

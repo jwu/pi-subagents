@@ -10,6 +10,7 @@ const agent: AgentConfig = {
   thinking: 'off',
   systemPromptMode: 'replace',
   maxDepth: 10,
+  debug: false,
   prompt: 'Scout.',
   source: 'global',
   filePath: '/agents/scout.md',

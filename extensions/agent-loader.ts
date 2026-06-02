@@ -15,6 +15,7 @@ export interface AgentConfig {
   systemPromptMode: SystemPromptMode;
   allowedAgents?: string[];
   maxDepth: number;
+  debug: boolean;
   skills?: string[];
   prompt: string;
   source: AgentSource;
@@ -117,6 +118,14 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
     throw new Error(`invalid maxDepth: ${data.maxDepth}`);
   }
 
+  let debug = false;
+  if (data.debug !== undefined) {
+    if (data.debug !== 'true' && data.debug !== 'false') {
+      throw new Error(`invalid debug: ${data.debug}`);
+    }
+    debug = data.debug === 'true';
+  }
+
   const allowedAgents = splitCsv(data.allowedAgents);
   const skills = splitCsv(data.skills);
 
@@ -130,6 +139,7 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
     systemPromptMode,
     allowedAgents: allowedAgents.length > 0 ? allowedAgents : undefined,
     maxDepth,
+    debug,
     prompt: body,
     source,
     filePath,

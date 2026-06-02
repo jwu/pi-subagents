@@ -67,13 +67,16 @@ For sub-agents launched with `systemPrompt: replace` or `systemPrompt: append`, 
 
 ### Debug a sub-agent prompt
 
-Use the slash command to preview the generated sub-agent system prompt:
+Set `debug: true` in an agent's frontmatter to export that sub-agent's effective runtime system prompt on each run:
 
-```text
-/debug-subagent-prompt <agentName>
+```markdown
+---
+name: scout
+debug: true
+---
 ```
 
-The preview opens in your external editor (`$VISUAL` or `$EDITOR`) as a read-only temporary Markdown file. It shows the prompt content that pi-subagents writes for the child process, including injected `skills` blocks. Runtime `Available subagents` injection happens later in the child process. For agents with `systemPrompt: append`, the preview shows only the appended content; pi's default system prompt is not included.
+The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including pi's default prompt, `systemPrompt` append/replace behavior, tools, skills, and pi-subagents' runtime `Available subagents` block when applicable.
 
 ## Agent configuration
 
@@ -89,6 +92,7 @@ Agents are Markdown files with YAML frontmatter.
 | `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt) or `replace` |
 | `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |
 | `maxDepth` | no | `10` | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.) |
+| `debug` | no | `false` | When `true`, export the effective runtime system prompt to `debug-system-prompt.md` |
 
 The Markdown body after the frontmatter is the agent's system prompt.
 
@@ -104,6 +108,7 @@ thinking: high
 systemPrompt: append
 allowedAgents: code-reviewer, refactor, test-writer
 maxDepth: 2
+debug: false
 ---
 
 You are an orchestrator. Break complex tasks into sub-tasks and delegate

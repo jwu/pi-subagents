@@ -36,6 +36,10 @@ _避免使用_：system prompt strategy、prompt injection mode
 子代理启动时接收的系统级指令，由代理定义及子代理可用资源提示组成。用于预览与核对子代理会话开始前的行为边界。
 _避免使用_：subagent prompt、agent prompt、child prompt
 
+**调试导出（Debug export）**：
+对子代理运行时有效系统提示词的文件化快照，用于核对子代理实际接收到的行为边界。
+_避免使用_：prompt preview、debug command output
+
 **可用子代理提示（Available subagents prompt）**：
 向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；当活动工具集包含 `subagent` 时，子进程在 agent-start hook 中向系统提示词追加独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
 _避免使用_：agent list prompt、subagent guideline only
