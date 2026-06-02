@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from './agent-loader.ts';
+import { formatAvailableSubagentsBlock } from './subagent-prompt.ts';
 import { resolveSkills } from './skill-resolver.ts';
 
 export interface AgentUsage {
@@ -78,6 +79,7 @@ export interface RunSubagentOptions {
   signal?: AbortSignal;
   onProgress?: (progress: AgentProgress) => void;
   depth?: number;
+  availableAgents?: string[];
   tempRoot?: string;
   outputArchiveDir?: string;
   agentDir?: string;
@@ -376,6 +378,15 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     const promptFilePath = path.join(tempDir, 'system-prompt.md');
 
     let promptContent = options.agent.prompt;
+    if (options.agent.tools.includes('subagent')) {
+      const availableSubagentsBlock = formatAvailableSubagentsBlock(
+        options.availableAgents ?? options.agent.allowedAgents ?? [],
+      );
+      if (availableSubagentsBlock) {
+        promptContent = `${promptContent.trimEnd()}\n\n${availableSubagentsBlock}`;
+      }
+    }
+
     const skillNames = options.agent.skills;
     if (skillNames && skillNames.length > 0) {
       const { resolved, missing } = resolveSkills(skillNames, { cwd: options.cwd });

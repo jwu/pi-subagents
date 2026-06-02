@@ -48,6 +48,23 @@ Or instruct pi to delegate:
 Run the code-reviewer agent on the last three commits
 ```
 
+### Available subagents in the prompt
+
+The extension exposes discovered sub-agents to the model in two places:
+
+- The `subagent` tool keeps a one-line prompt guideline:
+  `Available subagents: code-reviewer, refactor, test-writer`
+- The system prompt also gets an independent block:
+
+```text
+Available subagents:
+- code-reviewer
+- refactor
+- test-writer
+```
+
+For sub-agents launched with `systemPrompt: replace` or `systemPrompt: append`, the same block is written into the prompt passed via `--system-prompt` or `--append-system-prompt` when that agent has the `subagent` tool.
+
 ## Agent configuration
 
 Agents are Markdown files with YAML frontmatter.
@@ -101,6 +118,8 @@ Sub-agents can spawn their own sub-agents (if the `subagent` tool is in their wh
 **`maxDepth`** — Hard limit counting from the originating agent. `maxDepth: 0` means the agent cannot spawn sub-agents. `maxDepth: 1` allows one level, etc. Defaults to `10` when the agent has `subagent` in tools.
 
 **`allowedAgents`** — Whitelist enforced by the parent before spawning. A child process never sees agent names outside its parent's whitelist.
+
+The available-subagents prompt entries respect the same filtering: parent sessions use the currently visible agents, and child sessions only list agents allowed by their parent.
 
 These are passed via environment variables (`PI_SUBAGENT_DEPTH`, `PI_SUBAGENT_MAX_DEPTH`, `PI_SUBAGENT_ALLOWED`).
 

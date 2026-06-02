@@ -28,6 +28,10 @@ _避免使用_：tool list、tool set、tool configuration
 控制代理的 Markdown 正文如何应用于子 pi 进程。`replace`（默认）通过 `--system-prompt` 传入正文，替换默认系统提示词。`append` 通过 `--append-system-prompt` 传入，追加到默认提示词之后。取值为 `replace` 或 `append`。
 _避免使用_：system prompt strategy、prompt injection mode
 
+**可用子代理提示（Available subagents prompt）**：
+向模型暴露当前可派发的代理名称。工具提示中保留一行 `Available subagents: scout, worker`；系统提示词中使用独立块 `Available subagents:\n- scout\n- worker`。该列表受递归深度和 `allowedAgents`/`PI_SUBAGENT_ALLOWED` 过滤约束，子进程不会看到父代理允许列表之外的代理名称。
+_避免使用_：agent list prompt、subagent guideline only
+
 **模型（`model`）**：
 LLM 服务商和模型 ID，格式为 `provider/model-id`（例如 `anthropic/claude-sonnet-4-6`）。可选；默认使用父代理会话的活动模型。
 _避免使用_：llm、model config

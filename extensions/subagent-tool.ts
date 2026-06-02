@@ -217,10 +217,8 @@ export function registerSubagentTool(
     : options.agents;
   const runner = options.run ?? runSubagent;
 
-  const agentNames = agents
-    .map((a) => a.name)
-    .sort()
-    .join(', ');
+  const availableSubagents = agents.map((agent) => agent.name);
+  const agentNames = [...availableSubagents].sort().join(', ');
   const promptGuidelines =
     agentNames.length > 0 ? [`Available subagents: ${agentNames}`] : undefined;
 
@@ -252,6 +250,7 @@ export function registerSubagentTool(
         cwd: params.cwd ?? ctx.cwd,
         signal,
         depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
+        availableAgents: availableSubagents,
         onProgress: (progress) => onUpdate?.(toProgressResult(progress)),
       });
 

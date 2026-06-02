@@ -372,6 +372,39 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBeUndefined();
   });
 
+  test('injects available subagents into replace-mode system prompt when agent can delegate', async () => {
+    const writes: Array<{ filePath: string; content: string }> = [];
+
+    await runSubagent({
+      agent: { ...baseAgent, tools: ['read', 'subagent'] },
+      task: 'Delegate',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      availableAgents: ['worker', 'scout'],
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-available',
+        writeFile: async (filePath, content) => {
+          writes.push({ filePath, content });
+        },
+        removeDir: async () => undefined,
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
+      'You scout code.\n\nAvailable subagents:\n- scout\n- worker',
+    );
+  });
+
   test('uses append prompt mode, writes long tasks to a temp file, and cleans up', async () => {
     const writes: Array<{ filePath: string; content: string }> = [];
     const removed: string[] = [];
@@ -414,7 +447,10 @@ describe('runSubagent', () => {
 
     expect(result.output).toBe('ok');
     expect(writes).toEqual([
-      { filePath: '/tmp/pi-subagents-test/run-2/system-prompt.md', content: 'You scout code.' },
+      {
+        filePath: '/tmp/pi-subagents-test/run-2/system-prompt.md',
+        content: 'You scout code.\n\nAvailable subagents:\n- researcher\n- scout',
+      },
       { filePath: '/tmp/pi-subagents-test/run-2/task.md', content: longTask },
     ]);
     expect(calls[0].args).toContain('--append-system-prompt');

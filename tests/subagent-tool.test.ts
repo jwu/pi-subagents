@@ -472,6 +472,7 @@ describe('registerSubagentTool', () => {
           expect(options.agent).toBe(agent);
           expect(options.task).toBe('List files');
           expect(options.cwd).toBe('/repo');
+          expect(options.availableAgents).toEqual(['scout']);
           return expected;
         },
       },
