@@ -8,7 +8,12 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Container, Markdown, Spacer, Text } from '@earendil-works/pi-tui';
 import type { AgentConfig } from './agent-loader.ts';
-import { type AgentProgress, type AgentResult, runSubagent } from './subagent-executor.ts';
+import {
+  availableSubagentsForAgent,
+  type AgentProgress,
+  type AgentResult,
+  runSubagent,
+} from './subagent-executor.ts';
 import {
   contextUsageSeverity,
   formatSubagentCall,
@@ -250,7 +255,7 @@ export function registerSubagentTool(
         cwd: params.cwd ?? ctx.cwd,
         signal,
         depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
-        availableAgents: availableSubagents,
+        availableAgents: availableSubagentsForAgent(agent, availableSubagents),
         onProgress: (progress) => onUpdate?.(toProgressResult(progress)),
       });
 

@@ -106,6 +106,22 @@ const TASK_FILE_THRESHOLD = 8000;
 const OUTPUT_MAX_BYTES = 50 * 1024;
 const OUTPUT_MAX_LINES = 2000;
 
+export function availableSubagentsForAgent(
+  agent: AgentConfig,
+  candidateNames?: string[],
+): string[] {
+  const names = candidateNames ?? agent.allowedAgents ?? [];
+  const allowed = agent.allowedAgents ? new Set(agent.allowedAgents) : undefined;
+  const seen = new Set<string>();
+
+  return names.filter((name) => {
+    if (seen.has(name)) return false;
+    if (allowed && !allowed.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+}
+
 const defaultFs: ExecutorFs = {
   makeTempDir(prefix) {
     return fs.mkdtemp(prefix);
@@ -351,13 +367,11 @@ export async function buildSubagentSystemPrompt(
 ): Promise<BuildSubagentSystemPromptResult> {
   let prompt = options.agent.prompt;
 
-  if (options.agent.tools.includes('subagent')) {
-    const availableSubagentsBlock = formatAvailableSubagentsBlock(
-      options.availableAgents ?? options.agent.allowedAgents ?? [],
-    );
-    if (availableSubagentsBlock) {
-      prompt = `${prompt.trimEnd()}\n\n${availableSubagentsBlock}`;
-    }
+  const availableSubagentsBlock = formatAvailableSubagentsBlock(
+    availableSubagentsForAgent(options.agent, options.availableAgents),
+  );
+  if (availableSubagentsBlock) {
+    prompt = `${prompt.trimEnd()}\n\n${availableSubagentsBlock}`;
   }
 
   const missingSkills: string[] = [];

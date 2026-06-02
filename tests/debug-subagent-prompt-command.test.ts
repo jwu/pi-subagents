@@ -78,14 +78,16 @@ describe('registerDebugSubagentPromptCommand', () => {
     const harness = commandHarness();
     const previews: PromptPreview[] = [];
 
+    const reviewer: AgentConfig = { ...agent, name: 'reviewer' };
+
     registerDebugSubagentPromptCommand(harness.pi, {
-      agents: [agent],
+      agents: [agent, reviewer],
       buildPrompt: async (options) => {
         expect(options.agent.name).toBe('scout');
         expect(options.cwd).toBe('/repo');
-        expect(options.availableAgents).toEqual(['scout']);
+        expect(options.availableAgents).toEqual(['reviewer']);
         return {
-          prompt: 'Scout.\n\nAvailable subagents:\n- scout',
+          prompt: 'Scout.\n\nAvailable subagents:\n- reviewer',
           missingSkills: ['caveman'],
           skippedSkillPackages: ['npm:missing'],
         };
@@ -117,7 +119,31 @@ describe('registerDebugSubagentPromptCommand', () => {
     expect(previews[0].content).toContain(
       'Warnings:\n- package not installed, skipping skills: npm:missing\n- skill not found: caveman',
     );
-    expect(previews[0].content.endsWith('Scout.\n\nAvailable subagents:\n- scout')).toBe(true);
+    expect(previews[0].content.endsWith('Scout.\n\nAvailable subagents:\n- reviewer')).toBe(true);
+  });
+
+  test('previews the exact prompt returned by the shared subagent prompt builder', async () => {
+    const harness = commandHarness();
+    const previews: PromptPreview[] = [];
+    const prompt = 'Test agent.\n\nAvailable subagents:\n- scout\n- test-subagent';
+
+    registerDebugSubagentPromptCommand(harness.pi, {
+      agents: [agent, { ...agent, name: 'test-subagent', tools: ['read'] }],
+      buildPrompt: async () => ({
+        prompt,
+        missingSkills: [],
+        skippedSkillPackages: [],
+      }),
+      openPreview: async (preview) => {
+        previews.push(preview);
+      },
+    });
+
+    await harness.registered[0].handler('test-subagent', harness.ctx);
+
+    expect(previews).toHaveLength(1);
+    expect(previews[0].prompt).toBe(prompt);
+    expect(previews[0].content.endsWith(prompt)).toBe(true);
   });
 });
 

@@ -498,6 +498,48 @@ describe('registerSubagentTool', () => {
     });
   });
 
+  test('passes only requested agent allowedAgents as child availableAgents', async () => {
+    const registered: any[] = [];
+    const worker: AgentConfig = {
+      ...agent,
+      name: 'worker',
+      allowedAgents: ['scout'],
+    };
+    const writer: AgentConfig = { ...agent, name: 'writer' };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent, worker, writer],
+        env: {},
+        run: async (options) => {
+          expect(options.agent).toBe(worker);
+          expect(options.availableAgents).toEqual(['scout']);
+          return {
+            agent: 'worker',
+            status: 'done',
+            output: 'worked',
+            tools: [],
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+            startedAt: 1,
+            elapsedMs: 2,
+            isError: false,
+            exitCode: 0,
+            stderr: '',
+          };
+        },
+      },
+    );
+
+    await registered[0].execute(
+      'call-1',
+      { agent: 'worker', task: 'Delegate' },
+      undefined,
+      undefined,
+      { cwd: '/repo' },
+    );
+  });
+
   test('includes available subagents in promptGuidelines', () => {
     const registered: any[] = [];
     const reviewer: AgentConfig = { ...agent, name: 'reviewer' };

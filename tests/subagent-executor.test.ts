@@ -342,8 +342,9 @@ describe('runSubagent', () => {
     expect(removed).toEqual(['/tmp/pi-subagents-test/run-crash']);
   });
 
-  test('does not pass allowedAgents to agents that cannot call subagent', async () => {
+  test('injects available subagents prompt but does not pass allowed env to agents without subagent tool', async () => {
     const calls: Array<{ env: NodeJS.ProcessEnv }> = [];
+    const writes: Array<{ filePath: string; content: string }> = [];
 
     await runSubagent({
       agent: { ...baseAgent, allowedAgents: ['scout'] },
@@ -354,7 +355,9 @@ describe('runSubagent', () => {
       resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
       fs: {
         makeTempDir: async () => '/tmp/pi-subagents-test/run-no-allowed',
-        writeFile: async () => undefined,
+        writeFile: async (filePath, content) => {
+          writes.push({ filePath, content });
+        },
         removeDir: async () => undefined,
       },
       runner: async (invocation, handlers) => {
@@ -369,6 +372,9 @@ describe('runSubagent', () => {
       },
     });
 
+    expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
+      'You scout code.\n\nAvailable subagents:\n- scout',
+    );
     expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBeUndefined();
   });
 
@@ -402,6 +408,39 @@ describe('runSubagent', () => {
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
       'You scout code.\n\nAvailable subagents:\n- scout\n- worker',
+    );
+  });
+
+  test('filters injected available subagents by agent allowedAgents', async () => {
+    const writes: Array<{ filePath: string; content: string }> = [];
+
+    await runSubagent({
+      agent: { ...baseAgent, tools: ['read', 'subagent'], allowedAgents: ['scout'] },
+      task: 'Delegate',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      availableAgents: ['worker', 'scout'],
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-filtered-available',
+        writeFile: async (filePath, content) => {
+          writes.push({ filePath, content });
+        },
+        removeDir: async () => undefined,
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
+      'You scout code.\n\nAvailable subagents:\n- scout',
     );
   });
 
