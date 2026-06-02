@@ -1,3 +1,9 @@
+import {
+  DefaultPackageManager,
+  SettingsManager,
+  getAgentDir,
+  type ResolvedResource,
+} from '@earendil-works/pi-coding-agent';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -15,8 +21,16 @@ export interface SkillResolverFs {
 
 export interface ResolveSkillsOptions {
   cwd: string;
+  agentDir?: string;
   globalDir?: string;
   fs?: SkillResolverFs;
+  packageSkillFiles?: string[];
+}
+
+export interface ResolveSkillsResult {
+  resolved: ResolvedSkill[];
+  missing: string[];
+  skippedPackages: string[];
 }
 
 const defaultSkillFs: SkillResolverFs = {
@@ -79,7 +93,7 @@ function parseSkillFrontmatter(content: string): { name: string; description: st
   return { name: data.name || '', description: data.description.trim() };
 }
 
-function findSkillFile(
+function findLocalSkillFile(
   skillName: string,
   cwd: string,
   globalDir: string,
@@ -104,43 +118,111 @@ function findSkillFile(
   return undefined;
 }
 
-export function resolveSkills(
+async function resolvePackageSkillFiles(options: ResolveSkillsOptions): Promise<{
+  files: string[];
+  skippedPackages: string[];
+}> {
+  if (options.packageSkillFiles) {
+    return { files: options.packageSkillFiles, skippedPackages: [] };
+  }
+  if (options.fs) {
+    return { files: [], skippedPackages: [] };
+  }
+
+  const skippedPackages: string[] = [];
+  const agentDir = options.agentDir ?? getAgentDir();
+  const settingsManager = SettingsManager.create(options.cwd, agentDir);
+  const packageManager = new DefaultPackageManager({
+    cwd: options.cwd,
+    agentDir,
+    settingsManager,
+  });
+  const resolvedPaths = await packageManager.resolve(async (source) => {
+    skippedPackages.push(source);
+    return 'skip';
+  });
+
+  return {
+    files: resolvedPaths.skills
+      .filter((resource: ResolvedResource) => resource.enabled)
+      .map((resource: ResolvedResource) => resource.path),
+    skippedPackages,
+  };
+}
+
+function readSkill(
+  filePath: string,
+  requestedName: string,
+  fileSystem: SkillResolverFs,
+  requireNameMatch: boolean,
+): ResolvedSkill | undefined {
+  const content = fileSystem.readFile(filePath);
+  const frontmatter = parseSkillFrontmatter(content);
+  if (!frontmatter) return undefined;
+
+  const fileSkillName = frontmatter.name || path.basename(path.dirname(filePath));
+  const markdownName = path.basename(filePath, '.md');
+  if (requireNameMatch && fileSkillName !== requestedName && markdownName !== requestedName) {
+    return undefined;
+  }
+
+  return {
+    name: fileSkillName || requestedName,
+    description: frontmatter.description,
+    location: filePath,
+  };
+}
+
+export async function resolveSkills(
   skillNames: string[],
   options: ResolveSkillsOptions,
-): { resolved: ResolvedSkill[]; missing: string[] } {
+): Promise<ResolveSkillsResult> {
   const cwd = options.cwd;
   const globalDir = options.globalDir ?? defaultGlobalSkillsDir();
   const fileSystem = options.fs ?? defaultSkillFs;
   const resolved: ResolvedSkill[] = [];
   const missing: string[] = [];
+  const pendingPackageResolution: string[] = [];
 
   for (const name of skillNames) {
     const trimmed = name.trim();
     if (!trimmed) continue;
 
-    const filePath = findSkillFile(trimmed, cwd, globalDir, fileSystem);
-    if (!filePath) {
-      missing.push(trimmed);
-      continue;
-    }
-
-    try {
-      const content = fileSystem.readFile(filePath);
-      const frontmatter = parseSkillFrontmatter(content);
-      if (!frontmatter) {
-        missing.push(trimmed);
-        continue;
+    const localFilePath = findLocalSkillFile(trimmed, cwd, globalDir, fileSystem);
+    if (localFilePath) {
+      try {
+        const skill = readSkill(localFilePath, trimmed, fileSystem, false);
+        if (skill) {
+          resolved.push(skill);
+          continue;
+        }
+      } catch {
+        // Try package skills before marking the skill as missing.
       }
-
-      resolved.push({
-        name: frontmatter.name || trimmed,
-        description: frontmatter.description,
-        location: filePath,
-      });
-    } catch {
-      missing.push(trimmed);
     }
+
+    pendingPackageResolution.push(trimmed);
   }
 
-  return { resolved, missing };
+  const packageSkills =
+    pendingPackageResolution.length > 0
+      ? await resolvePackageSkillFiles(options)
+      : { files: [], skippedPackages: [] };
+
+  for (const trimmed of pendingPackageResolution) {
+    let packageSkill: ResolvedSkill | undefined;
+    for (const filePath of packageSkills.files) {
+      try {
+        packageSkill = readSkill(filePath, trimmed, fileSystem, true);
+        if (packageSkill) break;
+      } catch {
+        // Try the next package skill file.
+      }
+    }
+
+    if (packageSkill) resolved.push(packageSkill);
+    else missing.push(trimmed);
+  }
+
+  return { resolved, missing, skippedPackages: packageSkills.skippedPackages };
 }

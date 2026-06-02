@@ -16,18 +16,19 @@ function mockFs(files: Record<string, string>): SkillResolverFs {
 }
 
 describe('resolveSkills', () => {
-  test('returns empty results for empty input', () => {
-    const { resolved, missing } = resolveSkills([], {
+  test('returns empty results for empty input', async () => {
+    const { resolved, missing, skippedPackages } = await resolveSkills([], {
       cwd: '/project',
       fs: mockFs({}),
     });
 
     expect(resolved).toEqual([]);
     expect(missing).toEqual([]);
+    expect(skippedPackages).toEqual([]);
   });
 
-  test('returns missing for non-existent skill names', () => {
-    const { resolved, missing } = resolveSkills(['nonexistent-skill'], {
+  test('returns missing for non-existent skill names', async () => {
+    const { resolved, missing } = await resolveSkills(['nonexistent-skill'], {
       cwd: '/project',
       fs: mockFs({}),
     });
@@ -36,9 +37,9 @@ describe('resolveSkills', () => {
     expect(missing).toEqual(['nonexistent-skill']);
   });
 
-  test('resolves a skill from .agents/skills/<name>/SKILL.md', () => {
+  test('resolves a skill from .agents/skills/<name>/SKILL.md', async () => {
     const cwd = path.resolve(__dirname, '..');
-    const { resolved, missing } = resolveSkills(['caveman'], { cwd });
+    const { resolved, missing } = await resolveSkills(['caveman'], { cwd });
 
     expect(missing).toEqual([]);
     expect(resolved).toHaveLength(1);
@@ -47,8 +48,8 @@ describe('resolveSkills', () => {
     expect(resolved[0].location).toContain(path.join('.agents', 'skills', 'caveman', 'SKILL.md'));
   });
 
-  test('project skill takes priority over global skill with same name', () => {
-    const { resolved, missing } = resolveSkills(['shared-skill'], {
+  test('project skill takes priority over global skill with same name', async () => {
+    const { resolved, missing } = await resolveSkills(['shared-skill'], {
       cwd: '/project',
       globalDir: '/home/.pi/agent/skills',
       fs: mockFs({
@@ -64,8 +65,8 @@ describe('resolveSkills', () => {
     expect(resolved[0].description).toBe('project version');
   });
 
-  test('falls back to global skill when project skill does not exist', () => {
-    const { resolved, missing } = resolveSkills(['global-only'], {
+  test('falls back to global skill when project skill does not exist', async () => {
+    const { resolved, missing } = await resolveSkills(['global-only'], {
       cwd: '/project',
       globalDir: '/home/.pi/agent/skills',
       fs: mockFs({
@@ -79,8 +80,8 @@ describe('resolveSkills', () => {
     expect(resolved[0].description).toBe('global fallback');
   });
 
-  test('skill with missing description in frontmatter is treated as missing', () => {
-    const { resolved, missing } = resolveSkills(['no-desc'], {
+  test('skill with missing description in frontmatter is treated as missing', async () => {
+    const { resolved, missing } = await resolveSkills(['no-desc'], {
       cwd: '/project',
       fs: mockFs({
         '/project/.agents/skills/no-desc/SKILL.md': '---\nname: no-desc\n---\nNo description.\n',
@@ -89,5 +90,25 @@ describe('resolveSkills', () => {
 
     expect(resolved).toEqual([]);
     expect(missing).toEqual(['no-desc']);
+  });
+
+  test('falls back to enabled package skill files by frontmatter name', async () => {
+    const { resolved, missing } = await resolveSkills(['ask-user'], {
+      cwd: '/project',
+      fs: mockFs({
+        '/package/skills/ask/SKILL.md':
+          '---\nname: ask-user\ndescription: Uses ask_user as a requirements gate.\n---\nAsk user.\n',
+      }),
+      packageSkillFiles: ['/package/skills/ask/SKILL.md'],
+    });
+
+    expect(missing).toEqual([]);
+    expect(resolved).toEqual([
+      {
+        name: 'ask-user',
+        description: 'Uses ask_user as a requirements gate.',
+        location: '/package/skills/ask/SKILL.md',
+      },
+    ]);
   });
 });

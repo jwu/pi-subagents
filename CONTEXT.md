@@ -24,6 +24,10 @@ _避免使用_：subagent_agents、agent allowlist、spawn restriction
 代理可用的工具名称严格白名单。frontmatter 中使用逗号分隔的字符串。pi 内置工具（read、write、edit、bash、grep、find、ls）及扩展发现的工具均自动解析——无需手动维护路径映射。
 _避免使用_：tool list、tool set、tool configuration
 
+**技能（Skill）**：
+可按需加载的能力包，为代理提供特定任务的工作流、说明和引用资料。代理声明技能名称后，子代理启动时会收到可用技能列表，并在任务匹配时读取对应技能文件。
+_避免使用_：skill prompt、capability file、instruction bundle
+
 **系统提示词模式（`systemPrompt`）**：
 控制代理的 Markdown 正文如何应用于子 pi 进程。`replace`（默认）通过 `--system-prompt` 传入正文，替换默认系统提示词。`append` 通过 `--append-system-prompt` 传入，追加到默认提示词之后。取值为 `replace` 或 `append`。
 _避免使用_：system prompt strategy、prompt injection mode

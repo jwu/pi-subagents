@@ -389,7 +389,13 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
 
     const skillNames = options.agent.skills;
     if (skillNames && skillNames.length > 0) {
-      const { resolved, missing } = resolveSkills(skillNames, { cwd: options.cwd });
+      const { resolved, missing, skippedPackages } = await resolveSkills(skillNames, {
+        cwd: options.cwd,
+        agentDir: options.agentDir,
+      });
+      for (const source of skippedPackages) {
+        console.warn(`[pi-subagents] package not installed, skipping skills: ${source}`);
+      }
       for (const name of missing) {
         console.warn(`[pi-subagents] skill not found: ${name}`);
       }
