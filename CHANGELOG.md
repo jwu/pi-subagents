@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/jwu/pi-subagents/compare/v1.4.0...v1.5.0) (2026-06-03)
+
+
+### Features
+
+* support extended thinking levels ([0721713](https://github.com/jwu/pi-subagents/commit/07217133b20b37c5e2c5a4a3c262b7cf6cabc242))
+
 # [1.4.0](https://github.com/jwu/pi-subagents/compare/v1.3.0...v1.4.0) (2026-06-02)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@johnnywu/pi-subagents",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Sub-agents extension for pi coding agent.",
   "homepage": "https://github.com/jwu/pi-subagents#readme",
   "repository": {
