@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type SystemPromptMode = 'replace' | 'append';
 export type AgentSource = 'global' | 'project';
 
@@ -104,7 +104,7 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
   if (!data.name) throw new Error('missing required field: name');
 
   const thinking = (data.thinking ?? 'off') as ThinkingLevel;
-  if (!['off', 'low', 'medium', 'high'].includes(thinking)) {
+  if (!['off', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(thinking)) {
     throw new Error(`invalid thinking: ${data.thinking}`);
   }
 

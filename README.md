@@ -93,7 +93,7 @@ Agents are Markdown files with YAML frontmatter.
 | `description` | no | — | Human-readable summary |
 | `tools` | no | _none_ | Comma-separated tool whitelist (`read, write, bash, grep`, etc.) |
 | `model` | no | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`) |
-| `thinking` | no | `off` | Reasoning level: `off`, `low`, `medium`, `high` |
+| `thinking` | no | `off` | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` |
 | `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt and project context) or `replace` (replace default prompt and skip project context) |
 | `skills` | no | _none_ | Comma-separated skill names or simple wildcard patterns (`*`, `obsidian-*`) to load (resolved from project `.agents/skills/`, `.pi/skills/`, global `~/.pi/agent/skills/`, or npm packages) |
 | `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |

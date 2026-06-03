@@ -80,10 +80,17 @@ You inspect code quickly.
     ]);
   });
 
-  test('skips definitions missing required name and preserves explicit high thinking', async () => {
+  test('skips definitions missing required name and preserves explicit extended thinking levels', async () => {
     const files = new Map<string, string>([
       ['/global/noname.md', '---\ndescription: Missing name\n---\nNo name.\n'],
-      ['/global/thinker.md', '---\nname: thinker\nthinking: high\n---\nThink deeply.\n'],
+      [
+        '/global/minimal-thinker.md',
+        '---\nname: minimal-thinker\nthinking: minimal\n---\nThink a little.\n',
+      ],
+      [
+        '/global/xhigh-thinker.md',
+        '---\nname: xhigh-thinker\nthinking: xhigh\n---\nThink deeply.\n',
+      ],
     ]);
 
     const result = await loadAgentDefinitions({
@@ -96,8 +103,11 @@ You inspect code quickly.
       },
     });
 
-    expect(result.agents).toHaveLength(1);
-    expect(result.agents[0]).toMatchObject({ name: 'thinker', thinking: 'high' });
+    expect(result.agents).toHaveLength(2);
+    expect(result.agents.map((agent) => ({ name: agent.name, thinking: agent.thinking }))).toEqual([
+      { name: 'minimal-thinker', thinking: 'minimal' },
+      { name: 'xhigh-thinker', thinking: 'xhigh' },
+    ]);
     expect(result.warnings).toEqual([
       { filePath: '/global/noname.md', message: 'missing required field: name' },
     ]);

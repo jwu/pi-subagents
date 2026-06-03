@@ -65,7 +65,7 @@ name: scout                    # 必填。代理唯一名称。
 description: 快速代码库侦查     # 可选。
 tools: read, grep, find, ls    # 逗号分隔的严格白名单。
 model: anthropic/claude-haiku-4-5  # 可选。provider/model-id 格式。
-thinking: off                  # off|low|medium|high。默认 off。
+thinking: off                  # off|minimal|low|medium|high|xhigh。默认 off。
 systemPrompt: replace          # replace（默认）或 append。
 allowedAgents: scout, researcher  # 可选。限制可派发的子代理。
 maxDepth: 1                    # 可选。从本代理起算的最大递归深度。默认 10。

@@ -49,7 +49,7 @@ LLM 服务商和模型 ID，格式为 `provider/model-id`（例如 `anthropic/cl
 _避免使用_：llm、model config
 
 **推理等级（`thinking`）**：
-代理的推理/思考等级：`off`、`low`、`medium`、`high`。默认为 `off`。控制传递给子 pi 进程的 `--thinking` 标志。
+代理的推理/思考等级：`off`、`minimal`、`low`、`medium`、`high`、`xhigh`。默认为 `off`。控制传递给子 pi 进程的 `--thinking` 标志。
 _避免使用_：reasoning level、think mode
 
 **代理目录（`agents/`）**：
