@@ -10,6 +10,17 @@ import {
 import { registerSubagentTool } from './subagent-tool.ts';
 
 export default async function (pi: ExtensionAPI) {
+  // Process-level AbortController for cascading cancellation.
+  // When a parent pi process is killed, Node.js default SIGTERM handler exits
+  // the process without aborting running tool AbortSignals. Without this,
+  // grandchild subagent processes continue running after their parent exits.
+  // This controller bridges the gap by aborting on SIGTERM/SIGINT, and its
+  // signal is merged with per-call signals so defaultRunner kills child
+  // processes cleanly at every depth.
+  const processAbortController = new AbortController();
+  process.on('SIGTERM', () => processAbortController.abort());
+  process.on('SIGINT', () => processAbortController.abort());
+
   const result = await loadAgentDefinitions({ cwd: process.cwd() });
 
   for (const warning of result.warnings) {
@@ -50,5 +61,8 @@ export default async function (pi: ExtensionAPI) {
     });
   }
 
-  registerSubagentTool(pi, { agents: result.agents });
+  registerSubagentTool(pi, {
+    agents: result.agents,
+    processSignal: processAbortController.signal,
+  });
 }
