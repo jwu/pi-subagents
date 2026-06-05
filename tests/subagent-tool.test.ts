@@ -107,6 +107,77 @@ describe('registerSubagentTool', () => {
     );
   });
 
+  test('merges per-call signal with process signal so both can abort the subagent spawn', async () => {
+    const registered: any[] = [];
+    const perCallController = new AbortController();
+    const processController = new AbortController();
+
+    let capturedSignal: AbortSignal | undefined;
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent],
+        processSignal: processController.signal,
+        run: async (options) => {
+          capturedSignal = options.signal;
+          return {
+            agent: 'scout',
+            status: 'done',
+            output: 'ok',
+            tools: [],
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+            startedAt: 1,
+            elapsedMs: 2,
+            isError: false,
+            exitCode: 0,
+            stderr: '',
+          };
+        },
+      },
+    );
+
+    expect(registered).toHaveLength(1);
+
+    // Execute with per-call signal only — process signal should be merged
+    await registered[0].execute(
+      'call-1',
+      { agent: 'scout', task: 'List files' },
+      perCallController.signal,
+      undefined,
+      { cwd: '/repo' },
+    );
+
+    // Neither aborted yet
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Abort per-call → merged signal should abort
+    perCallController.abort();
+    expect(capturedSignal?.aborted).toBe(true);
+
+    // New call — per-call not aborted yet, process not aborted
+    await registered[0].execute(
+      'call-2',
+      { agent: 'scout', task: 'List files again' },
+      new AbortController().signal,
+      undefined,
+      { cwd: '/repo' },
+    );
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Abort process → merged signal should abort
+    processController.abort();
+    // Need a new call to capture the merged signal after process abort
+    await registered[0].execute(
+      'call-3',
+      { agent: 'scout', task: 'Final call' },
+      undefined,
+      undefined,
+      { cwd: '/repo' },
+    );
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
   test('highlights expanded subagent call title and task body like collapsed preview', () => {
     const registered: any[] = [];
 

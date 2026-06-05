@@ -46,6 +46,8 @@ export interface RegisterSubagentToolOptions {
   agents: AgentConfig[];
   run?: typeof runSubagent;
   env?: RecursionEnv;
+  /** Merged with per-call AbortSignal so process SIGTERM/SIGINT cascades to child processes. */
+  processSignal?: AbortSignal;
 }
 
 function availableAgentsText(agents: AgentConfig[]): string {
@@ -249,11 +251,18 @@ export function registerSubagentTool(
         );
       }
 
+      // Merge per-call signal with process signal for cascading cancellation.
+      // Without this, SIGTERM on this pi process leaves grandchild subagents running.
+      const mergedSignal: AbortSignal | undefined = (() => {
+        if (signal && options.processSignal) return AbortSignal.any([signal, options.processSignal]);
+        return signal ?? options.processSignal;
+      })();
+
       const result = await runner({
         agent,
         task: params.task,
         cwd: params.cwd ?? ctx.cwd,
-        signal,
+        signal: mergedSignal,
         depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
         availableAgents: availableSubagentsForAgent(agent, availableSubagents),
         onProgress: (progress) => onUpdate?.(toProgressResult(progress)),
