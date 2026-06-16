@@ -63,10 +63,21 @@ Available subagents:
 - test-writer
 ```
 
-The prompt file passed to the child process contains only the agent prompt plus skills. Runtime prompt assembly then depends on `systemPrompt` mode:
+The prompt file passed to the child process contains only the agent prompt plus skills. Runtime prompt assembly then depends on `systemPrompt` mode.
 
-- `append`: the child process uses pi's default prompt and project context files, then appends the agent prompt.
-- `replace`: the child process replaces pi's default prompt with the agent prompt and skips project context files; pi-subagents reinjects the active `Available tools` and `Guidelines` blocks at agent-start time so custom replace prompts still expose the selected tool affordances.
+### What goes into the sub-agent system prompt
+
+| Component | `append` | `replace` |
+|------|----------|-----------|
+| pi default system prompt | ✅ kept | ❌ replaced |
+| Project context files (AGENTS.md, etc.) | ✅ included | ❌ skipped |
+| Agent body (.md file body) | ✅ appended | ✅ becomes the prompt |
+| Skills XML block | ✅ appended | ✅ appended |
+| Available tools / Guidelines block | from default prompt | re-injected by `before_agent_start` hook |
+| Available subagents block | injected at agent start | injected at agent start |
+
+`append` keeps pi's full default prompt (with project context) and adds the agent body at the end.
+`replace` swaps out pi's default prompt and project context for the agent body, then the runtime hook re-injects tool and guideline blocks to preserve tool visibility.
 
 The `Available subagents` block is injected by the child process at agent-start time, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
 
