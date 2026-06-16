@@ -67,17 +67,20 @@ The prompt file passed to the child process contains only the agent prompt plus 
 
 ### What goes into the sub-agent system prompt
 
-| Component | `append` | `replace` |
-|------|----------|-----------|
-| pi default system prompt | ✅ kept | ❌ replaced |
-| Project context files (AGENTS.md, etc.) | ✅ included | ❌ skipped |
-| Agent body (.md file body) | ✅ appended | ✅ becomes the prompt |
-| Skills XML block | ✅ appended | ✅ appended |
-| Available tools / Guidelines block | from default prompt | re-injected by `before_agent_start` hook |
-| Available subagents block | injected at agent start | injected at agent start |
+| Component | `append` | `replace` | `replace-all` |
+|------|----------|-----------|---------------|
+| pi default system prompt | ✅ kept | ❌ replaced | ❌ replaced |
+| Project context files (AGENTS.md/CLAUDE.md, etc.) | ✅ included | ✅ included | ❌ skipped |
+| Agent body (.md file body) | ✅ appended | ✅ becomes the prompt | ✅ becomes the prompt |
+| Skills XML block | ✅ appended | ✅ appended | ✅ appended |
+| Available tools / Guidelines block | from default prompt | re-injected by `before_agent_start` hook | re-injected by `before_agent_start` hook |
+| Available subagents block | injected at agent start | injected at agent start | injected at agent start |
 
 `append` keeps pi's full default prompt (with project context) and adds the agent body at the end.
-`replace` swaps out pi's default prompt and project context for the agent body, then the runtime hook re-injects tool and guideline blocks to preserve tool visibility.
+`replace` swaps out pi's default prompt for the agent body while keeping pi context files.
+`replace-all` is the fully isolated mode: it swaps out pi's default prompt and skips pi context files, then the runtime hook re-injects tool and guideline blocks to preserve tool visibility.
+
+Breaking change: the old `replace` behavior is now `replace-all`. Existing agents that need to keep skipping AGENTS.md/CLAUDE.md should change `systemPrompt: replace` to `systemPrompt: replace-all`.
 
 The `Available subagents` block is injected by the child process at agent-start time, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
 
@@ -92,7 +95,7 @@ debug: true
 ---
 ```
 
-The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including `systemPrompt` append/replace behavior, tools/guidelines, skills, project context files in append mode, and pi-subagents' runtime `Available subagents` block when applicable.
+The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including `systemPrompt` append/replace/replace-all behavior, tools/guidelines, skills, project context files in append and replace modes, and pi-subagents' runtime `Available subagents` block when applicable.
 
 ## Agent configuration
 
@@ -105,7 +108,7 @@ Agents are Markdown files with YAML frontmatter.
 | `tools` | no | _none_ | Comma-separated tool whitelist (`read, write, bash, grep`, etc.) |
 | `model` | no | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`) |
 | `thinking` | no | `off` | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` |
-| `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt and project context) or `replace` (replace default prompt and skip project context) |
+| `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt and project context), `replace` (replace pi default prompt while keeping project context), or `replace-all` (replace pi default prompt and skip project context) |
 | `skills` | no | _none_ | Comma-separated skill names or simple wildcard patterns (`*`, `obsidian-*`) to load (resolved from project `.agents/skills/`, `.pi/skills/`, global `~/.pi/agent/skills/`, or npm packages) |
 | `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |
 | `maxDepth` | no | `10` | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.) |

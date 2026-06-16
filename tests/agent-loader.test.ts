@@ -113,6 +113,25 @@ You inspect code quickly.
     ]);
   });
 
+  test('parses replace-all system prompt mode', async () => {
+    const files = new Map<string, string>([
+      ['/project/scout.md', '---\nname: scout\nsystemPrompt: replace-all\n---\nScout.\n'],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.agents[0].systemPromptMode).toBe('replace-all');
+  });
+
   test('parses debug field from frontmatter', async () => {
     const files = new Map<string, string>([
       ['/project/debugger.md', '---\nname: debugger\ndebug: true\n---\nDebug prompt.\n'],

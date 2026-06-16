@@ -116,15 +116,24 @@ describe('subagent process env helpers', () => {
 
   test('parses only supported system prompt modes', () => {
     expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace' })).toBe('replace');
+    expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace-all' })).toBe(
+      'replace-all',
+    );
     expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'append' })).toBe('append');
     expect(subagentSystemPromptMode({ PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'other' })).toBeUndefined();
   });
 
-  test('detects replace-mode subagent process', () => {
+  test('detects replace-like subagent process', () => {
     expect(
       isSubagentReplaceSystemPrompt({
         PI_SUBAGENT_DEPTH: '1',
         PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace',
+      }),
+    ).toBe(true);
+    expect(
+      isSubagentReplaceSystemPrompt({
+        PI_SUBAGENT_DEPTH: '1',
+        PI_SUBAGENT_SYSTEM_PROMPT_MODE: 'replace-all',
       }),
     ).toBe(true);
     expect(

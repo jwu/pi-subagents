@@ -1,4 +1,4 @@
-export type SystemPromptModeEnv = 'replace' | 'append';
+export type SystemPromptModeEnv = 'replace' | 'replace-all' | 'append';
 
 export type RecursionEnv = Partial<
   Record<
@@ -41,10 +41,11 @@ export function isSubagentProcess(env: RecursionEnv): boolean {
 
 export function subagentSystemPromptMode(env: RecursionEnv): SystemPromptModeEnv | undefined {
   const mode = env?.PI_SUBAGENT_SYSTEM_PROMPT_MODE;
-  if (mode === 'replace' || mode === 'append') return mode;
+  if (mode === 'replace' || mode === 'replace-all' || mode === 'append') return mode;
   return undefined;
 }
 
 export function isSubagentReplaceSystemPrompt(env: RecursionEnv): boolean {
-  return isSubagentProcess(env) && subagentSystemPromptMode(env) === 'replace';
+  const mode = subagentSystemPromptMode(env);
+  return isSubagentProcess(env) && (mode === 'replace' || mode === 'replace-all');
 }

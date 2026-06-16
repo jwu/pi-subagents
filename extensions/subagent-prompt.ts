@@ -65,7 +65,7 @@ export function appendAvailableToolsAndGuidelinesBlock(
   options: ToolGuidelinePromptOptions,
 ): string {
   const block = formatAvailableToolsAndGuidelinesBlock(options);
-  if (!block || systemPrompt.includes('Available tools:') || systemPrompt.includes('Guidelines:')) {
+  if (!block || systemPrompt.includes(block)) {
     return systemPrompt;
   }
 

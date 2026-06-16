@@ -67,13 +67,27 @@ describe('subagent prompt helpers', () => {
     );
   });
 
-  test('does not append tools and guidelines when already present', () => {
-    const prompt = 'Available tools:\n- read: Read file contents';
+  test('does not append tools and guidelines when the exact block is already present', () => {
+    const block = formatAvailableToolsAndGuidelinesBlock({
+      selectedTools: ['read'],
+      toolSnippets: { read: 'Read file contents' },
+    })!;
+    const prompt = `Agent prompt.\n\n${block}`;
+
     expect(
       appendAvailableToolsAndGuidelinesBlock(prompt, {
         selectedTools: ['read'],
         toolSnippets: { read: 'Read file contents' },
       }),
     ).toBe(prompt);
+  });
+
+  test('appends tools and guidelines when context files mention guidelines', () => {
+    expect(
+      appendAvailableToolsAndGuidelinesBlock('Project Guidelines:\n- Follow AGENTS.md', {
+        selectedTools: ['read'],
+        toolSnippets: { read: 'Read file contents' },
+      }),
+    ).toContain('Available tools:\n- read: Read file contents');
   });
 });

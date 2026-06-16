@@ -461,7 +461,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     );
     const args = [pi.entryPoint, '--mode', 'json', '-p', '--no-skills', '--no-prompt-templates'];
 
-    if (options.agent.systemPromptMode === 'replace') args.push('--no-context-files');
+    if (options.agent.systemPromptMode === 'replace-all') args.push('--no-context-files');
     if (options.agent.model) args.push('--model', options.agent.model);
     args.push('--thinking', options.agent.thinking);
     if (options.agent.tools.length > 0) args.push('--tools', options.agent.tools.join(','));

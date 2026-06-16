@@ -9,7 +9,7 @@ const baseAgent: AgentConfig = {
   tools: ['read', 'grep'],
   model: 'anthropic/claude-haiku-4-5',
   thinking: 'low',
-  systemPromptMode: 'replace',
+  systemPromptMode: 'replace-all',
   maxDepth: 3,
   debug: false,
   prompt: 'You scout code.',
@@ -84,8 +84,39 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_DEPTH).toBe('1');
     expect(calls[0].env.PI_SUBAGENT_MAX_DEPTH).toBe('3');
     expect(calls[0].env.PI_SUBAGENT_NAME).toBe('scout');
-    expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace');
+    expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace-all');
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('false');
+  });
+
+  test('replace mode keeps context files while replacing pi default prompt', async () => {
+    const calls: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = [];
+
+    await runSubagent({
+      agent: { ...baseAgent, systemPromptMode: 'replace' },
+      task: 'List files',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-replace',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (invocation, handlers) => {
+        calls.push({ args: invocation.args, env: invocation.env });
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(calls[0].args).toContain('--system-prompt');
+    expect(calls[0].args).not.toContain('--no-context-files');
+    expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace');
   });
 
   test('truncates oversized output and writes the complete output to a readable temp file', async () => {
@@ -411,7 +442,7 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('true');
   });
 
-  test('does not inject available subagents into replace-mode system prompt', async () => {
+  test('does not inject available subagents into replace-all-mode prompt file', async () => {
     const writes: Array<{ filePath: string; content: string }> = [];
 
     await runSubagent({

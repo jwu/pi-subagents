@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-export type SystemPromptMode = 'replace' | 'append';
+export type SystemPromptMode = 'replace' | 'replace-all' | 'append';
 export type AgentSource = 'global' | 'project';
 
 export interface AgentConfig {
@@ -109,7 +109,7 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
   }
 
   const systemPromptMode = (data.systemPrompt ?? 'append') as SystemPromptMode;
-  if (!['replace', 'append'].includes(systemPromptMode)) {
+  if (!['replace', 'replace-all', 'append'].includes(systemPromptMode)) {
     throw new Error(`invalid systemPrompt: ${data.systemPrompt}`);
   }
 
