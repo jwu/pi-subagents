@@ -1,3 +1,14 @@
+# [2.0.0](https://github.com/jwu/pi-subagents/compare/v1.5.0...v2.0.0) (2026-06-16)
+
+
+* feat!: clarify systemPrompt replace semantics ([5cdb603](https://github.com/jwu/pi-subagents/commit/5cdb603e814b966f43fa0537dae5ac90799233b7))
+
+
+### BREAKING CHANGES
+
+* systemPrompt: replace now preserves pi context files.
+Use systemPrompt: replace-all for the previous isolated behavior.
+
 # [1.5.0](https://github.com/jwu/pi-subagents/compare/v1.4.0...v1.5.0) (2026-06-03)
 
 
