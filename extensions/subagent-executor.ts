@@ -25,6 +25,15 @@ export interface AgentToolLog {
   nested?: AgentProgress;
 }
 
+export type SubagentSessionMode = 'none' | 'fork';
+
+export interface SubagentSessionInfo {
+  requested: SubagentSessionMode;
+  effective: SubagentSessionMode;
+  warning?: string;
+  file?: string;
+}
+
 export interface AgentProgress {
   agent: string;
   status: 'running' | 'done' | 'error';
@@ -34,6 +43,7 @@ export interface AgentProgress {
   startedAt: number;
   elapsedMs: number;
   model?: string;
+  session?: SubagentSessionInfo;
 }
 
 export interface AgentResult extends AgentProgress {
@@ -82,6 +92,7 @@ export interface RunSubagentOptions {
   tempRoot?: string;
   outputArchiveDir?: string;
   agentDir?: string;
+  session?: SubagentSessionInfo;
   resolvePi?: () => Promise<PiResolution> | PiResolution;
   runner?: ProcessRunner;
   fs?: ExecutorFs;
@@ -424,6 +435,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     startedAt,
     elapsedMs: now() - startedAt,
     model,
+    session: options.session ?? { requested: 'none', effective: 'none' },
   });
 
   const emit = (status: AgentProgress['status'] = 'running') =>
@@ -470,6 +482,9 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       promptFilePath,
     );
     args.push('--session-dir', subagentSessionDir(options.cwd, options.agentDir));
+    if (options.session?.effective === 'fork' && options.session.file) {
+      args.push('--session', options.session.file);
+    }
     args.push(buildTaskArgument(options.task, taskFilePath));
 
     const env: NodeJS.ProcessEnv = {
@@ -478,6 +493,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       PI_SUBAGENT_MAX_DEPTH: String(options.agent.maxDepth),
       PI_SUBAGENT_NAME: options.agent.name,
       PI_SUBAGENT_SYSTEM_PROMPT_MODE: options.agent.systemPromptMode,
+      PI_SUBAGENT_SESSION: options.session?.effective ?? 'none',
     };
     const visibleAgents = availableSubagentsForAgent(options.agent, options.availableAgents);
     if (visibleAgents.length > 0) {

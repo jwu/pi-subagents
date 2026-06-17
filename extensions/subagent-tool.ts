@@ -1,18 +1,24 @@
 import {
   getMarkdownTheme,
   keyHint,
+  SessionManager,
   type AgentToolUpdateCallback,
   type ExtensionAPI,
   type ExtensionContext,
   type ThemeColor,
 } from '@earendil-works/pi-coding-agent';
 import { Container, Markdown, Spacer, Text } from '@earendil-works/pi-tui';
+import { existsSync } from 'node:fs';
+import * as path from 'node:path';
 import type { AgentConfig } from './agent-loader.ts';
 import {
   availableSubagentsForAgent,
   type AgentProgress,
   type AgentResult,
   runSubagent,
+  subagentSessionDir,
+  type SubagentSessionInfo,
+  type SubagentSessionMode,
 } from './subagent-executor.ts';
 import {
   contextUsageSeverity,
@@ -30,6 +36,12 @@ const SubagentParams = {
     agent: { type: 'string', description: 'Name of the agent to invoke' },
     task: { type: 'string', description: 'Task to delegate to the agent' },
     cwd: { type: 'string', description: 'Working directory for the agent process' },
+    session: {
+      type: 'string',
+      enum: ['none', 'fork'],
+      description:
+        'Parent session handling: none starts a fresh subagent session, fork branches from the current session',
+    },
   },
   required: ['agent', 'task'],
   additionalProperties: false,
@@ -39,6 +51,7 @@ type SubagentParamsType = {
   agent: string;
   task: string;
   cwd?: string;
+  session?: SubagentSessionMode;
 };
 
 type RegisterablePi = Pick<ExtensionAPI, 'registerTool'>;
@@ -46,6 +59,7 @@ export interface RegisterSubagentToolOptions {
   agents: AgentConfig[];
   run?: typeof runSubagent;
   env?: RecursionEnv;
+  agentDir?: string;
 }
 
 function availableAgentsText(agents: AgentConfig[]): string {
@@ -70,6 +84,76 @@ function toProgressResult(progress: AgentProgress) {
     content: [{ type: 'text' as const, text: progress.output || '(running...)' }],
     details: progress,
   };
+}
+
+function freshSessionInfo(requested: SubagentSessionMode, warning?: string): SubagentSessionInfo {
+  return {
+    requested,
+    effective: 'none',
+    ...(warning ? { warning } : {}),
+  };
+}
+
+function resolveSubagentSession(
+  requested: SubagentSessionMode | undefined,
+  childCwd: string,
+  ctx: ExtensionContext,
+  agentDir?: string,
+): SubagentSessionInfo {
+  const mode = requested ?? 'none';
+  if (mode === 'none') return freshSessionInfo(mode);
+
+  if (path.resolve(childCwd) !== path.resolve(ctx.cwd)) {
+    return freshSessionInfo(
+      mode,
+      `Requested fork session but cwd differs from the parent session; running with a fresh subagent session instead.`,
+    );
+  }
+
+  const parentSessionFile = ctx.sessionManager?.getSessionFile();
+  if (!parentSessionFile) {
+    return freshSessionInfo(
+      mode,
+      'Requested fork session but the parent session is not persisted; running with a fresh subagent session instead.',
+    );
+  }
+  if (!existsSync(parentSessionFile)) {
+    return freshSessionInfo(
+      mode,
+      'Requested fork session but the parent session file was not materialized; running with a fresh subagent session instead.',
+    );
+  }
+
+  const parentLeafId = ctx.sessionManager?.getLeafId();
+  if (!parentLeafId) {
+    return freshSessionInfo(
+      mode,
+      'Requested fork session but the parent session has no current leaf; running with a fresh subagent session instead.',
+    );
+  }
+
+  try {
+    const forkSource = SessionManager.open(
+      parentSessionFile,
+      subagentSessionDir(childCwd, agentDir),
+      childCwd,
+    );
+    const sessionFile = forkSource.createBranchedSession(parentLeafId);
+    if (!sessionFile || !existsSync(sessionFile)) {
+      return freshSessionInfo(
+        mode,
+        'Requested fork session but the forked session file was not materialized; running with a fresh subagent session instead.',
+      );
+    }
+
+    return { requested: mode, effective: 'fork', file: sessionFile };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return freshSessionInfo(
+      mode,
+      `Requested fork session but creating the fork failed (${message}); running with a fresh subagent session instead.`,
+    );
+  }
 }
 
 type CollapsedTheme = {
@@ -224,14 +308,16 @@ export function registerSubagentTool(
 
   const availableSubagents = agents.map((agent) => agent.name);
   const agentNames = [...availableSubagents].sort().join(', ');
+  const sessionGuideline =
+    'Use session: "fork" when the delegated task depends on the current conversation, prior discussion, or parent session history. Use the default session: "none" for self-contained tasks.';
   const promptGuidelines =
-    agentNames.length > 0 ? [`Available subagents: ${agentNames}`] : undefined;
+    agentNames.length > 0 ? [`Available subagents: ${agentNames}`, sessionGuideline] : undefined;
 
   pi.registerTool({
     name: 'subagent',
     label: 'Subagent',
     description: 'Delegate a task to a named sub-agent running in an isolated pi process.',
-    promptSnippet: 'Delegate isolated tasks with subagent({ agent, task, cwd? }).',
+    promptSnippet: 'Delegate isolated tasks with subagent({ agent, task, cwd?, session? }).',
     promptGuidelines,
     parameters: SubagentParams,
 
@@ -249,13 +335,17 @@ export function registerSubagentTool(
         );
       }
 
+      const childCwd = params.cwd ?? ctx.cwd;
+      const session = resolveSubagentSession(params.session, childCwd, ctx, options.agentDir);
       const result = await runner({
         agent,
         task: params.task,
-        cwd: params.cwd ?? ctx.cwd,
+        cwd: childCwd,
         signal,
         depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
         availableAgents: availableSubagentsForAgent(agent, availableSubagents),
+        agentDir: options.agentDir,
+        session,
         onProgress: (progress) => onUpdate?.(toProgressResult(progress)),
       });
 

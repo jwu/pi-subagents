@@ -4,6 +4,7 @@ import { numberArg, preview, shortenPath, stringArg } from './tool-args.ts';
 export interface SubagentCallArgs {
   agent?: string;
   task?: string;
+  session?: 'none' | 'fork';
 }
 
 export interface RenderTextOptions {
@@ -195,7 +196,8 @@ export function formatSubagentResultLines(
   options: RenderTextOptions,
 ): SubagentResultLine[] {
   const icon = progress.status === 'error' ? '✗' : progress.status === 'done' ? '✓' : '▸';
-  const statusLine = `${icon} ${progress.agent}${progress.model ? ` (${progress.model})` : ''} — ${
+  const sessionBadge = progress.session?.effective === 'fork' ? ' [fork]' : '';
+  const statusLine = `${icon} ${progress.agent}${sessionBadge}${progress.model ? ` (${progress.model})` : ''} — ${
     progress.tools.length
   } tools · ${elapsedSeconds(progress.elapsedMs)}s`;
   const toolLines = formatToolLineItems(progress, options);
@@ -203,6 +205,9 @@ export function formatSubagentResultLines(
   const lines: SubagentResultLine[] = [
     { text: '', kind: 'blank', singleLine: false },
     { text: statusLine, kind: 'status', singleLine: false },
+    ...(progress.session?.warning
+      ? [{ text: `session: ${progress.session.warning}`, kind: 'hint' as const, singleLine: true }]
+      : []),
     ...toolLines,
   ];
 

@@ -2,7 +2,7 @@
 
 Sub-agents extension for [pi](https://github.com/badlogic/pi-mono) coding agent.
 
-Delegates tasks to isolated pi child processes — each running with its own model, system prompt, and tool set. Sub-agents inherit zero conversation context; all necessary context must be provided in the task description.
+Delegates tasks to isolated pi child processes — each running with its own model, system prompt, and tool set. Sub-agents start with a fresh session by default; pass `session: "fork"` to branch from the current parent pi session.
 
 ## Install
 
@@ -47,6 +47,23 @@ Or instruct pi to delegate:
 ```
 Run the code-reviewer agent on the last three commits
 ```
+
+By default, sub-agents do not inherit parent conversation history. For tasks that need the current conversation, request a forked session:
+
+```ts
+subagent({ agent: "code-reviewer", task: "Review the approach we just discussed", session: "fork" })
+```
+
+`session` is optional and accepts:
+
+| Value | Behavior |
+|-------|----------|
+| `none` | Default. Start a new sub-agent session in the subagents session directory. |
+| `fork` | Fork the current parent session at its active leaf and run the sub-agent with that branched session. |
+
+If `fork` is requested but unavailable, pi-subagents falls back to `none` and shows a warning in the tool details/rendering. Fallback happens when the parent session is not persisted, has no current leaf, the forked session file is not materialized, or the call uses a `cwd` different from the parent session cwd.
+
+The tool prompt also guides the model to choose `session: "fork"` when a delegated task depends on the current conversation, prior discussion, or parent session history, and to keep `session: "none"` for self-contained tasks.
 
 ### Available subagents in the prompt
 
@@ -159,7 +176,7 @@ Sub-agents can spawn their own sub-agents (if the `subagent` tool is in their wh
 
 The available-subagents prompt entries respect the same filtering: parent sessions use the currently visible agents, and child sessions only list agents allowed by their parent.
 
-These are passed via environment variables (`PI_SUBAGENT_DEPTH`, `PI_SUBAGENT_MAX_DEPTH`, `PI_SUBAGENT_ALLOWED`). Child processes also receive `PI_SUBAGENT_NAME` and `PI_SUBAGENT_SYSTEM_PROMPT_MODE` so runtime hooks can distinguish append vs. replace behavior.
+These are passed via environment variables (`PI_SUBAGENT_DEPTH`, `PI_SUBAGENT_MAX_DEPTH`, `PI_SUBAGENT_ALLOWED`). Child processes also receive `PI_SUBAGENT_NAME`, `PI_SUBAGENT_SYSTEM_PROMPT_MODE`, and `PI_SUBAGENT_SESSION` so runtime hooks can distinguish prompt mode and effective session mode.
 
 ## Session storage
 
@@ -171,7 +188,7 @@ Sub-agent sessions are saved as `.jsonl` files for post-hoc debugging:
   └── ...
 ```
 
-Each file contains one JSON object per line — session headers, messages, tool calls, and usage data. Parent pi sessions live in the same project directory (no `subagents/` subdirectory).
+Each file contains one JSON object per line — session headers, messages, tool calls, and usage data. Parent pi sessions live in the same project directory (no `subagents/` subdirectory). When `session: "fork"` succeeds, the branched child session is still written under `subagents/` and points back to the parent session in its header.
 
 ## Development
 

@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { initTheme } from '@earendil-works/pi-coding-agent';
+import { initTheme, SessionManager } from '@earendil-works/pi-coding-agent';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { registerSubagentTool } from '../extensions/subagent-tool.ts';
 import type { AgentConfig } from '../extensions/agent-loader.ts';
 import type { AgentResult } from '../extensions/subagent-executor.ts';
@@ -69,6 +72,163 @@ describe('registerSubagentTool', () => {
     expect(registered).toEqual([]);
   });
 
+  test('passes a forked parent session to the subagent when session is fork', async () => {
+    const registered: any[] = [];
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-subagents-tool-'));
+
+    try {
+      const parentSessionDir = path.join(tempDir, 'parent-sessions');
+      const parent = SessionManager.create('/repo', parentSessionDir);
+      parent.appendMessage({
+        role: 'user',
+        content: [{ type: 'text', text: 'Parent context' }],
+      } as any);
+      parent.appendMessage({
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Parent answer' }],
+      } as any);
+
+      registerSubagentTool(
+        { registerTool: (tool: unknown) => registered.push(tool) },
+        {
+          agents: [agent],
+          agentDir: tempDir,
+          run: async (options) => {
+            expect(options.session).toMatchObject({ requested: 'fork', effective: 'fork' });
+            expect(options.session?.file).toContain('/subagents/');
+            expect(options.session?.file).toBeTruthy();
+            await expect(fs.stat(options.session!.file!)).resolves.toBeTruthy();
+            return {
+              agent: 'scout',
+              status: 'done',
+              output: 'ok',
+              tools: [],
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                cost: 0,
+                contextTokens: 0,
+              },
+              startedAt: 1,
+              elapsedMs: 2,
+              session: options.session,
+              isError: false,
+              exitCode: 0,
+              stderr: '',
+            };
+          },
+        },
+      );
+
+      const result = await registered[0].execute(
+        'call-1',
+        { agent: 'scout', task: 'Use parent context', session: 'fork' },
+        undefined,
+        undefined,
+        { cwd: '/repo', sessionManager: parent },
+      );
+
+      expect(result.details.session).toMatchObject({ requested: 'fork', effective: 'fork' });
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('falls back to a fresh session when the forked session file is not materialized', async () => {
+    const registered: any[] = [];
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-subagents-tool-'));
+
+    try {
+      const parent = SessionManager.create('/repo', path.join(tempDir, 'parent-sessions'));
+      parent.appendMessage({
+        role: 'user',
+        content: [{ type: 'text', text: 'Only user so far' }],
+      } as any);
+
+      registerSubagentTool(
+        { registerTool: (tool: unknown) => registered.push(tool) },
+        {
+          agents: [agent],
+          agentDir: tempDir,
+          run: async (options) => {
+            expect(options.session).toMatchObject({ requested: 'fork', effective: 'none' });
+            expect(options.session?.warning).toContain('not materialized');
+            return {
+              agent: 'scout',
+              status: 'done',
+              output: 'ok',
+              tools: [],
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                cost: 0,
+                contextTokens: 0,
+              },
+              startedAt: 1,
+              elapsedMs: 2,
+              session: options.session,
+              isError: false,
+              exitCode: 0,
+              stderr: '',
+            };
+          },
+        },
+      );
+
+      await registered[0].execute(
+        'call-1',
+        { agent: 'scout', task: 'Use parent context', session: 'fork' },
+        undefined,
+        undefined,
+        { cwd: '/repo', sessionManager: parent },
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('falls back to a fresh session with a warning when fork cwd differs from parent cwd', async () => {
+    const registered: any[] = [];
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent],
+        run: async (options) => {
+          expect(options.session).toMatchObject({ requested: 'fork', effective: 'none' });
+          expect(options.session?.warning).toContain('cwd differs');
+          return {
+            agent: 'scout',
+            status: 'done',
+            output: 'ok',
+            tools: [],
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+            startedAt: 1,
+            elapsedMs: 2,
+            session: options.session,
+            isError: false,
+            exitCode: 0,
+            stderr: '',
+          };
+        },
+      },
+    );
+
+    const result = await registered[0].execute(
+      'call-1',
+      { agent: 'scout', task: 'List files', cwd: '/other', session: 'fork' },
+      undefined,
+      undefined,
+      { cwd: '/repo' },
+    );
+
+    expect(result.details.session).toMatchObject({ requested: 'fork', effective: 'none' });
+  });
+
   test('passes incremented depth while current process is within max depth', async () => {
     const registered: any[] = [];
 
@@ -105,6 +265,25 @@ describe('registerSubagentTool', () => {
         cwd: '/repo',
       },
     );
+  });
+
+  test('does not show requested fork in the styled subagent call title', () => {
+    const registered: any[] = [];
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const rendered = registered[0]
+      .renderCall({ agent: 'scout', task: 'List files', session: 'fork' }, testTheme, {
+        expanded: false,
+      })
+      .render(120)
+      .join('\n');
+
+    expect(rendered).toContain('subagent scout List files');
+    expect(rendered).not.toContain('subagent scout [fork]');
   });
 
   test('highlights expanded subagent call title and task body like collapsed preview', () => {
@@ -541,7 +720,7 @@ describe('registerSubagentTool', () => {
     );
   });
 
-  test('includes available subagents in promptGuidelines', () => {
+  test('includes available subagents and session selection guidance in promptGuidelines', () => {
     const registered: any[] = [];
     const reviewer: AgentConfig = { ...agent, name: 'reviewer' };
 
@@ -550,7 +729,10 @@ describe('registerSubagentTool', () => {
       { agents: [agent, reviewer] },
     );
 
-    expect(registered[0].promptGuidelines).toEqual(['Available subagents: reviewer, scout']);
+    expect(registered[0].promptGuidelines).toEqual([
+      'Available subagents: reviewer, scout',
+      'Use session: "fork" when the delegated task depends on the current conversation, prior discussion, or parent session history. Use the default session: "none" for self-contained tasks.',
+    ]);
   });
 
   test('omits promptGuidelines when no agents are available', () => {
@@ -576,7 +758,10 @@ describe('registerSubagentTool', () => {
       },
     );
 
-    expect(registered[0].promptGuidelines).toEqual(['Available subagents: scout']);
+    expect(registered[0].promptGuidelines).toEqual([
+      'Available subagents: scout',
+      'Use session: "fork" when the delegated task depends on the current conversation, prior discussion, or parent session history. Use the default session: "none" for self-contained tasks.',
+    ]);
   });
 
   test('promptGuidelines is undefined when PI_SUBAGENT_ALLOWED filters out all agents', () => {

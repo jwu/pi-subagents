@@ -46,6 +46,12 @@ describe('subagent rendering text', () => {
     );
   });
 
+  test('does not show requested fork in the subagent call preview', () => {
+    expect(formatSubagentCall({ agent: 'scout', task: 'List files', session: 'fork' })).toBe(
+      'subagent scout List files',
+    );
+  });
+
   test('formats expanded call with the complete task body', () => {
     const task = `line one\nline two ${'x'.repeat(80)}`;
 
@@ -61,6 +67,25 @@ describe('subagent rendering text', () => {
     expect(formatSubagentResultText(result, { expanded: true })).toStartWith(
       '\n✓ scout (anthropic/claude-haiku-4-5)',
     );
+  });
+
+  test('shows effective fork and session fallback warnings in result text', () => {
+    expect(
+      formatSubagentResultText(
+        { ...result, session: { requested: 'fork', effective: 'fork', file: '/tmp/fork.jsonl' } },
+        { expanded: false },
+      ),
+    ).toStartWith('\n✓ scout [fork] (anthropic/claude-haiku-4-5)');
+
+    expect(
+      formatSubagentResultText(
+        {
+          ...result,
+          session: { requested: 'fork', effective: 'none', warning: 'cwd differs' },
+        },
+        { expanded: false },
+      ),
+    ).toContain('session: cwd differs');
   });
 
   test('renders nested subagent progress inline under the launching tool in expanded view', () => {

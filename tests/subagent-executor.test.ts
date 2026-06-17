@@ -58,6 +58,7 @@ describe('runSubagent', () => {
 
     expect(result.output).toBe('done');
     expect(result.isError).toBe(false);
+    expect(result.session).toEqual({ requested: 'none', effective: 'none' });
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe('/usr/local/bin/node');
     expect(calls[0].args).toEqual([
@@ -85,7 +86,48 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_MAX_DEPTH).toBe('3');
     expect(calls[0].env.PI_SUBAGENT_NAME).toBe('scout');
     expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace-all');
+    expect(calls[0].env.PI_SUBAGENT_SESSION).toBe('none');
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('false');
+  });
+
+  test('runs pi with a forked session file when session is fork', async () => {
+    const calls: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = [];
+
+    const result = await runSubagent({
+      agent: baseAgent,
+      task: 'Use parent context',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      agentDir: '/root/.pi/agent',
+      session: { requested: 'fork', effective: 'fork', file: '/sessions/subagents/fork.jsonl' },
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-fork',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (invocation, handlers) => {
+        calls.push({ args: invocation.args, env: invocation.env });
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'forked' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(result.session).toEqual({
+      requested: 'fork',
+      effective: 'fork',
+      file: '/sessions/subagents/fork.jsonl',
+    });
+    expect(calls[0].args).toContain('--session-dir');
+    expect(calls[0].args).toContain('/root/.pi/agent/sessions/--repo--/subagents');
+    expect(calls[0].args).toContain('--session');
+    expect(calls[0].args).toContain('/sessions/subagents/fork.jsonl');
+    expect(calls[0].env.PI_SUBAGENT_SESSION).toBe('fork');
   });
 
   test('replace mode keeps context files while replacing pi default prompt', async () => {

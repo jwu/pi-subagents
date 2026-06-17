@@ -5,7 +5,7 @@
 ## 术语表
 
 **子代理（Sub-agent）**：
-由主代理启动的隔离子 pi 进程，用于完成委派任务。不继承任何对话上下文——所有必要上下文必须在任务描述中提供。
+由主代理启动的隔离子 pi 进程，用于完成委派任务。默认不继承父会话历史；调用时可用 `session: fork` 从当前父会话 leaf 创建独立分支快照。
 _避免使用_：Child process、worker process（"worker" 是特定的代理名称，而非子代理的同义词）
 
 **代理（Agent）**：
@@ -13,7 +13,7 @@ _避免使用_：Child process、worker process（"worker" 是特定的代理名
 _避免使用_：Agent config、agent profile
 
 **任务（Task）**：
-从父代理传递给子代理的自然语言指令，包含完成任务所需的所有上下文。子代理启动时没有任何其他上下文。
+从父代理传递给子代理的自然语言指令，包含完成任务所需的即时上下文。默认 `session: none` 时子代理没有父会话历史；`session: fork` 时仍应在任务中明确本次委派目标与期望输出。
 _避免使用_：Prompt、job、command
 
 **允许的代理（`allowedAgents`）**：
@@ -61,5 +61,5 @@ _避免使用_：agent folder、agent config directory
 _避免使用_：recursion limit、depth limit、nesting limit
 
 **子代理会话（Session for sub-agents）**：
-子代理会话存储在 `~/.pi/agent/sessions/{project}/subagents/` 下，使用 pi 的正常会话管理（不使用 `--no-session`）。这使得事后可以调试子代理的运行记录。
+子代理会话存储在 `~/.pi/agent/sessions/{project}/subagents/` 下，使用 pi 的正常会话管理（不使用 `--no-session`）。默认 `session: none` 创建新的独立子代理会话；显式 `session: fork` 会从当前调用者的父会话 leaf 创建分支 session，并通过 `--session` 传给子进程。若父会话无法 fork（未持久化、无 leaf、fork 文件未落盘，或显式 `cwd` 与父会话 cwd 不同），会降级为 `none` 并在结果元数据/渲染中给出 warning。
 _避免使用_：ephemeral session、sub-agent session directory
