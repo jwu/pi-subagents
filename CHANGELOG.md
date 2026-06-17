@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/jwu/pi-subagents/compare/v2.0.0...v2.1.0) (2026-06-17)
+
+
+### Features
+
+* support forked subagent sessions ([50f27f5](https://github.com/jwu/pi-subagents/commit/50f27f5ea45f559f0125944f4f42c8c955cddd49))
+
 # [2.0.0](https://github.com/jwu/pi-subagents/compare/v1.5.0...v2.0.0) (2026-06-16)
 
 
