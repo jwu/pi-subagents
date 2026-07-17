@@ -72,6 +72,60 @@ describe('registerSubagentTool', () => {
     expect(registered).toEqual([]);
   });
 
+  test('forwards an in-flight tool abort signal to the runner', async () => {
+    const registered: any[] = [];
+    const controller = new AbortController();
+    let signalSeenByRunner: AbortSignal | undefined;
+    let resolveStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
+    });
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent],
+        run: async (options) => {
+          signalSeenByRunner = options.signal;
+          resolveStarted?.();
+
+          await new Promise<void>((resolve) => {
+            options.signal?.addEventListener('abort', () => resolve(), { once: true });
+          });
+
+          return {
+            agent: 'scout',
+            status: 'error',
+            output: '',
+            tools: [],
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+            startedAt: 1,
+            elapsedMs: 2,
+            isError: true,
+            exitCode: 143,
+            stderr: '',
+          };
+        },
+      },
+    );
+
+    const execution = registered[0].execute(
+      'call-1',
+      { agent: 'scout', task: 'Wait for cancellation' },
+      controller.signal,
+      undefined,
+      { cwd: '/repo' },
+    );
+
+    await started;
+    expect(signalSeenByRunner).toBe(controller.signal);
+    expect(signalSeenByRunner?.aborted).toBe(false);
+
+    controller.abort();
+    await execution;
+    expect(signalSeenByRunner?.aborted).toBe(true);
+  });
+
   test('passes a forked parent session to the subagent when session is fork', async () => {
     const registered: any[] = [];
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-subagents-tool-'));
