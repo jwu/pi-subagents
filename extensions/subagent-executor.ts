@@ -1,4 +1,8 @@
-import { AuthStorage, ModelRegistry, withFileMutationQueue } from '@earendil-works/pi-coding-agent';
+import {
+  ModelRegistry,
+  ModelRuntime,
+  withFileMutationQueue,
+} from '@earendil-works/pi-coding-agent';
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -467,10 +471,11 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     }
 
     const pi = await resolvePi();
-    const modelRegistry = ModelRegistry.create(
-      AuthStorage.create(options.agentDir ? path.join(options.agentDir, 'auth.json') : undefined),
-      options.agentDir ? path.join(options.agentDir, 'models.json') : undefined,
-    );
+    const runtime = await ModelRuntime.create({
+      authPath: options.agentDir ? path.join(options.agentDir, 'auth.json') : undefined,
+      modelsPath: options.agentDir ? path.join(options.agentDir, 'models.json') : undefined,
+    });
+    const modelRegistry = new ModelRegistry(runtime);
     const args = [pi.entryPoint, '--mode', 'json', '-p', '--no-skills', '--no-prompt-templates'];
 
     if (options.agent.systemPromptMode === 'replace-all') args.push('--no-context-files');

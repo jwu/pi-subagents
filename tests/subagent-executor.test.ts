@@ -251,6 +251,38 @@ describe('runSubagent', () => {
     });
   });
 
+  test('looks up context windows through the Pi 0.80 ModelRuntime registry', async () => {
+    const result = await runSubagent({
+      agent: { ...baseAgent, model: 'deepseek/deepseek-v4-flash' },
+      task: 'Report usage',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-model-runtime',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: {
+              role: 'assistant',
+              provider: 'deepseek',
+              model: 'deepseek-v4-flash',
+              usage: { input: 100, output: 20, totalTokens: 70 },
+              content: [{ type: 'text', text: 'usage reported' }],
+            },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(result.usage.contextWindow).toBe(1_000_000);
+  });
+
   test('uses aggregate usage from agent_end messages when available', async () => {
     const result = await runSubagent({
       agent: baseAgent,
