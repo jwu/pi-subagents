@@ -1,3 +1,10 @@
+## [2.1.1](https://github.com/jwu/pi-subagents/compare/v2.1.0...v2.1.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* migrate model registry to Pi 0.80 runtime ([00026d6](https://github.com/jwu/pi-subagents/commit/00026d6e6aaea112896f358c0f86d20f48e73318))
+
 # [2.1.0](https://github.com/jwu/pi-subagents/compare/v2.0.0...v2.1.0) (2026-06-17)
 
 
