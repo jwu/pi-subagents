@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { resolvePiEntryPoint, runSubagent } from '../extensions/subagent-executor.ts';
+import * as path from 'node:path';
+import {
+  buildSubagentSystemPrompt,
+  resolvePiEntryPoint,
+  runSubagent,
+} from '../extensions/subagent-executor.ts';
 import type { AgentConfig } from '../extensions/agent-loader.ts';
 
 const baseAgent: AgentConfig = {
@@ -16,6 +21,26 @@ const baseAgent: AgentConfig = {
   source: 'global',
   filePath: '/agents/scout.md',
 };
+
+describe('buildSubagentSystemPrompt', () => {
+  test('automatically inserts the runtime tools marker after replace-mode agent body', async () => {
+    const result = await buildSubagentSystemPrompt({
+      agent: { ...baseAgent, prompt: 'You scout code.' },
+      cwd: '/repo',
+    });
+
+    expect(result.prompt).toBe('You scout code.\n\n<pi-subagents-runtime-tools />');
+  });
+
+  test('does not add a runtime tools marker in append mode', async () => {
+    const result = await buildSubagentSystemPrompt({
+      agent: { ...baseAgent, systemPromptMode: 'append', prompt: 'You scout code.' },
+      cwd: '/repo',
+    });
+
+    expect(result.prompt).toBe('You scout code.');
+  });
+});
 
 describe('resolvePiEntryPoint', () => {
   test('resolves the pi CLI entry point from the installed package', () => {
@@ -482,7 +507,7 @@ describe('runSubagent', () => {
     });
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.',
+      'You scout code.\n\n<pi-subagents-runtime-tools />',
     );
     expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBe('scout');
   });
@@ -545,7 +570,7 @@ describe('runSubagent', () => {
     });
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.',
+      'You scout code.\n\n<pi-subagents-runtime-tools />',
     );
   });
 
@@ -579,7 +604,7 @@ describe('runSubagent', () => {
     });
 
     expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.',
+      'You scout code.\n\n<pi-subagents-runtime-tools />',
     );
   });
 
@@ -647,7 +672,7 @@ describe('runSubagent', () => {
         skills: ['caveman'],
       },
       task: 'Be brief',
-      cwd: process.cwd(),
+      cwd: path.resolve(__dirname, 'fixtures/skills-project'),
       tempRoot: '/tmp/pi-subagents-test',
       resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
       fs: {

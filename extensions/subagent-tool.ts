@@ -59,6 +59,8 @@ export interface RegisterSubagentToolOptions {
   agents: AgentConfig[];
   run?: typeof runSubagent;
   env?: RecursionEnv;
+  /** Explicit allowlist for the current session. An empty list disables delegation. */
+  allowedAgents?: readonly string[];
   agentDir?: string;
 }
 
@@ -300,7 +302,8 @@ export function registerSubagentTool(
   const env: RecursionEnv = options.env ?? process.env;
   if (isPastMaxDepth(env)) return;
 
-  const allowed = allowedAgentNames(env);
+  const allowed =
+    options.allowedAgents === undefined ? allowedAgentNames(env) : new Set(options.allowedAgents);
   const agents = allowed
     ? options.agents.filter((candidate) => allowed.has(candidate.name))
     : options.agents;

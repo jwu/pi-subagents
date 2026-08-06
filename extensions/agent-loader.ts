@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { LEGACY_RUNTIME_TOOLS_MARKER } from './subagent-prompt.ts';
 
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type SystemPromptMode = 'replace' | 'replace-all' | 'append';
@@ -126,13 +127,14 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
     debug = data.debug === 'true';
   }
 
+  const tools = splitCsv(data.tools);
   const allowedAgents = splitCsv(data.allowedAgents);
   const skills = splitCsv(data.skills);
 
   return {
     name: data.name,
     description: data.description,
-    tools: splitCsv(data.tools),
+    tools,
     skills: skills.length > 0 ? skills : undefined,
     model: data.model || undefined,
     thinking,
@@ -140,7 +142,7 @@ function parseAgentFile(content: string, filePath: string, source: AgentSource):
     allowedAgents: allowedAgents.length > 0 ? allowedAgents : undefined,
     maxDepth,
     debug,
-    prompt: body,
+    prompt: body.replaceAll(LEGACY_RUNTIME_TOOLS_MARKER, ''),
     source,
     filePath,
   };

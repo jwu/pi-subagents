@@ -800,6 +800,21 @@ describe('registerSubagentTool', () => {
     expect(registered[0].promptGuidelines).toBeUndefined();
   });
 
+  test('promptGuidelines respects an explicit session allowlist', () => {
+    const registered: any[] = [];
+    const writer: AgentConfig = { ...agent, name: 'writer' };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent, writer], allowedAgents: ['writer'] },
+    );
+
+    expect(registered[0].promptGuidelines).toEqual([
+      'Available subagents: writer',
+      'Use session: "fork" when the delegated task depends on the current conversation, prior discussion, or parent session history. Use the default session: "none" for self-contained tasks.',
+    ]);
+  });
+
   test('promptGuidelines respects PI_SUBAGENT_ALLOWED filtering', () => {
     const registered: any[] = [];
     const writer: AgentConfig = { ...agent, name: 'writer' };

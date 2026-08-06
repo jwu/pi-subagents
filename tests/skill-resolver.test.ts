@@ -48,8 +48,8 @@ describe('resolveSkills', () => {
     expect(missing).toEqual(['nonexistent-skill']);
   });
 
-  test('resolves a skill from .agents/skills/<name>/SKILL.md', async () => {
-    const cwd = path.resolve(__dirname, '..');
+  test('resolves a skill from the project Skill fixture', async () => {
+    const cwd = path.resolve(__dirname, 'fixtures/skills-project');
     const { resolved, missing } = await resolveSkills(['caveman'], { cwd });
 
     expect(missing).toEqual([]);

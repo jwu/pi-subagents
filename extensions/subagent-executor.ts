@@ -9,6 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from './agent-loader.ts';
+import { AUTO_RUNTIME_TOOLS_MARKER } from './subagent-prompt.ts';
 import { resolveSkills } from './skill-resolver.ts';
 
 export interface AgentUsage {
@@ -380,6 +381,12 @@ export async function buildSubagentSystemPrompt(
   options: BuildSubagentSystemPromptOptions,
 ): Promise<BuildSubagentSystemPromptResult> {
   let prompt = options.agent.prompt;
+  if (
+    options.agent.systemPromptMode === 'replace' ||
+    options.agent.systemPromptMode === 'replace-all'
+  ) {
+    prompt = `${prompt}\n\n${AUTO_RUNTIME_TOOLS_MARKER}`;
+  }
 
   const missingSkills: string[] = [];
   const skippedSkillPackages: string[] = [];

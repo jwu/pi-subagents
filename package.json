@@ -82,12 +82,13 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": ">=0.80.10",
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.3",
+    "@earendil-works/pi-coding-agent": "^0.83.0",
     "@commitlint/config-conventional": "^20.5.3",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/commit-analyzer": "^13.0.1",

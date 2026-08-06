@@ -51,14 +51,18 @@ Run the code-reviewer agent on the last three commits
 By default, sub-agents do not inherit parent conversation history. For tasks that need the current conversation, request a forked session:
 
 ```ts
-subagent({ agent: "code-reviewer", task: "Review the approach we just discussed", session: "fork" })
+subagent({
+  agent: 'code-reviewer',
+  task: 'Review the approach we just discussed',
+  session: 'fork',
+});
 ```
 
 `session` is optional and accepts:
 
-| Value | Behavior |
-|-------|----------|
-| `none` | Default. Start a new sub-agent session in the subagents session directory. |
+| Value  | Behavior                                                                                             |
+| ------ | ---------------------------------------------------------------------------------------------------- |
+| `none` | Default. Start a new sub-agent session in the subagents session directory.                           |
 | `fork` | Fork the current parent session at its active leaf and run the sub-agent with that branched session. |
 
 If `fork` is requested but unavailable, pi-subagents falls back to `none` and shows a warning in the tool details/rendering. Fallback happens when the parent session is not persisted, has no current leaf, the forked session file is not materialized, or the call uses a `cwd` different from the parent session cwd.
@@ -84,22 +88,24 @@ The prompt file passed to the child process contains only the agent prompt plus 
 
 ### What goes into the sub-agent system prompt
 
-| Component | `append` | `replace` | `replace-all` |
-|------|----------|-----------|---------------|
-| pi default system prompt | ✅ kept | ❌ replaced | ❌ replaced |
-| Project context files (AGENTS.md/CLAUDE.md, etc.) | ✅ included | ✅ included | ❌ skipped |
-| Agent body (.md file body) | ✅ appended | ✅ becomes the prompt | ✅ becomes the prompt |
-| Skills XML block | ✅ appended | ✅ appended | ✅ appended |
-| Available tools / Guidelines block | from default prompt | re-injected by `before_agent_start` hook | re-injected by `before_agent_start` hook |
-| Available subagents block | injected at agent start | injected at agent start | injected at agent start |
+| Component                                         | `append`                                    | `replace`                                     | `replace-all`                                 |
+| ------------------------------------------------- | ------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
+| pi default system prompt                          | ✅ kept                                     | ❌ replaced                                   | ❌ replaced                                   |
+| Project context files (AGENTS.md/CLAUDE.md, etc.) | ✅ included                                 | ✅ included                                   | ❌ skipped                                    |
+| Agent body (.md file body)                        | ✅ appended                                 | ✅ becomes the prompt                         | ✅ becomes the prompt                         |
+| Skills XML block                                  | ✅ appended                                 | ✅ appended                                   | ✅ appended                                   |
+| Available tools / Guidelines block                | from default prompt                         | automatically injected after agent body        | automatically injected after agent body        |
+| Available subagents                               | supplied by active `subagent` tool metadata | supplied by active `subagent` tool metadata   | supplied by active `subagent` tool metadata   |
 
-`append` keeps pi's full default prompt (with project context) and adds the agent body at the end.
+`append` keeps pi's default prompt and its built-in tools/guidelines block. The agent body and its skills block are appended before pi project context.
 `replace` swaps out pi's default prompt for the agent body while keeping pi context files.
-`replace-all` is the fully isolated mode: it swaps out pi's default prompt and skips pi context files, then the runtime hook re-injects tool and guideline blocks to preserve tool visibility.
+`replace-all` is the fully isolated mode: it swaps out pi's default prompt and skips pi context files.
+
+For `replace` and `replace-all`, pi-subagents automatically injects Pi's runtime `Available tools` and `Guidelines` blocks after the agent body and before its skills block. Agent definitions do not need a placeholder.
 
 Breaking change: the old `replace` behavior is now `replace-all`. Existing agents that need to keep skipping AGENTS.md/CLAUDE.md should change `systemPrompt: replace` to `systemPrompt: replace-all`.
 
-The `Available subagents` block is injected by the child process at agent-start time, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
+Available subagents are supplied through the active `subagent` tool's `promptGuidelines`, after `PI_SUBAGENT_ALLOWED` and recursion depth filtering are applied.
 
 ### Debug a sub-agent prompt
 
@@ -112,24 +118,24 @@ debug: true
 ---
 ```
 
-The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including `systemPrompt` append/replace/replace-all behavior, tools/guidelines, skills, project context files in append and replace modes, and pi-subagents' runtime `Available subagents` block when applicable.
+The child process writes `debug-system-prompt.md` in the project cwd. The file contains the prompt visible during `before_agent_start`, including `systemPrompt` append/replace/replace-all behavior, tools/guidelines, skills, project context files in append and replace modes, and active tool prompt metadata.
 
 ## Agent configuration
 
 Agents are Markdown files with YAML frontmatter.
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `name` | **yes** | — | Unique agent identifier |
-| `description` | no | — | Human-readable summary |
-| `tools` | no | _none_ | Comma-separated tool whitelist (`read, write, bash, grep`, etc.) |
-| `model` | no | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`) |
-| `thinking` | no | `off` | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` |
-| `systemPrompt` | no | `append` | How the body is applied: `append` (append to pi default system prompt and project context), `replace` (replace pi default prompt while keeping project context), or `replace-all` (replace pi default prompt and skip project context) |
-| `skills` | no | _none_ | Comma-separated skill names or simple wildcard patterns (`*`, `obsidian-*`) to load (resolved from project `.agents/skills/`, `.pi/skills/`, global `~/.pi/agent/skills/`, or npm packages) |
-| `allowedAgents` | no | _all_ | Comma-separated list of sub-agents this agent may spawn |
-| `maxDepth` | no | `10` | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.) |
-| `debug` | no | `false` | When `true`, export the effective runtime system prompt to `debug-system-prompt.md` |
+| Field           | Required | Default        | Description                                                                                                                                                                                                                                                                                                             |
+| --------------- | -------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | **yes**  | —              | Unique agent identifier                                                                                                                                                                                                                                                                                                 |
+| `description`   | no       | —              | Human-readable summary                                                                                                                                                                                                                                                                                                  |
+| `tools`         | no       | _none_         | Comma-separated tool whitelist (`read, write, bash, grep`, etc.)                                                                                                                                                                                                                                                        |
+| `model`         | no       | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`)                                                                                                                                                                                                                                                                       |
+| `thinking`      | no       | `off`          | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`                                                                                                                                                                                                                                                     |
+| `systemPrompt`  | no       | `append`       | How the body is applied: `append` (append to pi default system prompt and project context), `replace` (replace pi default prompt while keeping project context), or `replace-all` (replace pi default prompt and skip project context). In `replace` modes, the runtime tools/guidelines block is injected automatically. |
+| `skills`        | no       | _none_         | Comma-separated skill names or simple wildcard patterns (`*`, `obsidian-*`) to load (resolved from project `.agents/skills/`, `.pi/skills/`, global `~/.pi/agent/skills/`, or npm packages)                                                                                                                             |
+| `allowedAgents` | no       | _all_          | Comma-separated list of sub-agents this agent may spawn                                                                                                                                                                                                                                                                 |
+| `maxDepth`      | no       | `10`           | Maximum recursion depth (`0` = no sub-agents, `1` = one level, etc.)                                                                                                                                                                                                                                                    |
+| `debug`         | no       | `false`        | When `true`, export the effective runtime system prompt to `debug-system-prompt.md`                                                                                                                                                                                                                                     |
 
 The Markdown body after the frontmatter is the agent's system prompt.
 
@@ -159,10 +165,10 @@ them to specialist agents. Combine their results and report a summary.
 
 Agents are discovered from two locations (project overrides global):
 
-| Scope | Path |
-|-------|------|
-| Global | `~/.pi/agent/agents/*.md` |
-| Project | `.pi/agents/*.md` |
+| Scope   | Path                      |
+| ------- | ------------------------- |
+| Global  | `~/.pi/agent/agents/*.md` |
+| Project | `.pi/agents/*.md`         |
 
 Only `.md` files are scanned. Files are parsed at extension load time; parse errors produce warnings but don't block other agents.
 

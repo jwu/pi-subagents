@@ -1,3 +1,6 @@
+export const AUTO_RUNTIME_TOOLS_MARKER = '<pi-subagents-runtime-tools />';
+export const LEGACY_RUNTIME_TOOLS_MARKER = '<pi-runtime-tools />';
+
 export interface ToolGuidelinePromptOptions {
   selectedTools?: string[];
   toolSnippets?: Record<string, string>;
@@ -50,38 +53,15 @@ export function formatAvailableToolsAndGuidelinesBlock(
   ].join('\n');
 }
 
-function appendBeforeTrailingRuntimeMetadata(systemPrompt: string, block: string): string {
-  const marker = '\nCurrent date:';
-  const index = systemPrompt.lastIndexOf(marker);
-  if (index === -1) return `${systemPrompt.trimEnd()}\n\n${block}`;
-
-  const before = systemPrompt.slice(0, index).trimEnd();
-  const after = systemPrompt.slice(index);
-  return `${before}\n\n${block}${after}`;
-}
-
-export function appendAvailableToolsAndGuidelinesBlock(
+export function injectRuntimeToolsBlock(
   systemPrompt: string,
   options: ToolGuidelinePromptOptions,
 ): string {
-  const block = formatAvailableToolsAndGuidelinesBlock(options);
-  if (!block || systemPrompt.includes(block)) {
-    return systemPrompt;
+  const block = formatAvailableToolsAndGuidelinesBlock(options) ?? '';
+  if (systemPrompt.includes(AUTO_RUNTIME_TOOLS_MARKER)) {
+    return systemPrompt
+      .replace(AUTO_RUNTIME_TOOLS_MARKER, block)
+      .replaceAll(LEGACY_RUNTIME_TOOLS_MARKER, '');
   }
-
-  return appendBeforeTrailingRuntimeMetadata(systemPrompt, block);
-}
-
-export function formatAvailableSubagentsBlock(agentNames: string[]): string | undefined {
-  const names = [...new Set(agentNames.map((name) => name.trim()).filter(Boolean))].sort();
-  if (names.length === 0) return undefined;
-
-  return ['Available subagents:', ...names.map((name) => `- ${name}`)].join('\n');
-}
-
-export function appendAvailableSubagentsBlock(systemPrompt: string, agentNames: string[]): string {
-  const block = formatAvailableSubagentsBlock(agentNames);
-  if (!block || systemPrompt.includes(block)) return systemPrompt;
-
-  return `${systemPrompt.trimEnd()}\n\n${block}`;
+  return systemPrompt.replace(LEGACY_RUNTIME_TOOLS_MARKER, block);
 }

@@ -113,6 +113,30 @@ You inspect code quickly.
     ]);
   });
 
+  test('accepts replace modes with tools without a runtime tools placeholder', async () => {
+    const files = new Map<string, string>([
+      [
+        '/project/replacer.md',
+        '---\nname: replacer\ntools: read\nsystemPrompt: replace\n---\nReplace instructions.\n\n<pi-runtime-tools />\n',
+      ],
+    ]);
+
+    const result = await loadAgentDefinitions({
+      globalDir: '/global',
+      projectDir: '/project',
+      fs: {
+        listFiles: async (dir) =>
+          [...files.keys()].filter((filePath) => filePath.startsWith(`${dir}/`)),
+        readFile: async (filePath) => files.get(filePath) ?? '',
+      },
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.agents).toHaveLength(1);
+    expect(result.agents[0].tools).toEqual(['read']);
+    expect(result.agents[0].prompt).not.toContain('<pi-runtime-tools />');
+  });
+
   test('parses replace-all system prompt mode', async () => {
     const files = new Map<string, string>([
       ['/project/scout.md', '---\nname: scout\nsystemPrompt: replace-all\n---\nScout.\n'],

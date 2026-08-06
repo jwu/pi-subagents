@@ -1,24 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  appendAvailableSubagentsBlock,
-  appendAvailableToolsAndGuidelinesBlock,
-  formatAvailableSubagentsBlock,
+  AUTO_RUNTIME_TOOLS_MARKER,
+  LEGACY_RUNTIME_TOOLS_MARKER,
   formatAvailableToolsAndGuidelinesBlock,
+  injectRuntimeToolsBlock,
 } from '../extensions/subagent-prompt.ts';
 
 describe('subagent prompt helpers', () => {
-  test('formats available subagents as standalone bullet block', () => {
-    expect(formatAvailableSubagentsBlock(['worker', 'scout', 'scout'])).toBe(
-      'Available subagents:\n- scout\n- worker',
-    );
-  });
-
-  test('appends available subagents outside promptGuidelines content', () => {
-    expect(appendAvailableSubagentsBlock('Base prompt.\n', ['worker', 'scout'])).toBe(
-      'Base prompt.\n\nAvailable subagents:\n- scout\n- worker',
-    );
-  });
-
   test('formats available tools and guidelines from system prompt options', () => {
     expect(
       formatAvailableToolsAndGuidelinesBlock({
@@ -42,13 +30,16 @@ describe('subagent prompt helpers', () => {
     );
   });
 
-  test('appends available tools and guidelines before runtime metadata', () => {
+  test('replaces the internal runtime tools marker', () => {
     expect(
-      appendAvailableToolsAndGuidelinesBlock('Agent prompt.\nCurrent date: 2026-06-02', {
-        selectedTools: ['bash'],
-        toolSnippets: { bash: 'Execute commands' },
-        promptGuidelines: [],
-      }),
+      injectRuntimeToolsBlock(
+        `Agent prompt.\n\n${AUTO_RUNTIME_TOOLS_MARKER}\n\nCurrent working directory: /repo`,
+        {
+          selectedTools: ['bash'],
+          toolSnippets: { bash: 'Execute commands' },
+          promptGuidelines: [],
+        },
+      ),
     ).toBe(
       [
         'Agent prompt.',
@@ -62,32 +53,24 @@ describe('subagent prompt helpers', () => {
         '- Use bash for file operations like ls, rg, find',
         '- Be concise in your responses',
         '- Show file paths clearly when working with files',
-        'Current date: 2026-06-02',
+        '',
+        'Current working directory: /repo',
       ].join('\n'),
     );
   });
 
-  test('does not append tools and guidelines when the exact block is already present', () => {
-    const block = formatAvailableToolsAndGuidelinesBlock({
-      selectedTools: ['read'],
-      toolSnippets: { read: 'Read file contents' },
-    })!;
-    const prompt = `Agent prompt.\n\n${block}`;
-
+  test('replaces the legacy marker when an existing parent process supplies it', () => {
     expect(
-      appendAvailableToolsAndGuidelinesBlock(prompt, {
-        selectedTools: ['read'],
-        toolSnippets: { read: 'Read file contents' },
-      }),
-    ).toBe(prompt);
-  });
-
-  test('appends tools and guidelines when context files mention guidelines', () => {
-    expect(
-      appendAvailableToolsAndGuidelinesBlock('Project Guidelines:\n- Follow AGENTS.md', {
+      injectRuntimeToolsBlock(`Agent prompt.\n${LEGACY_RUNTIME_TOOLS_MARKER}`, {
         selectedTools: ['read'],
         toolSnippets: { read: 'Read file contents' },
       }),
     ).toContain('Available tools:\n- read: Read file contents');
+  });
+
+  test('renders an explicit empty tools block when no runtime tools are available', () => {
+    expect(
+      injectRuntimeToolsBlock(`Agent prompt.\n${AUTO_RUNTIME_TOOLS_MARKER}`, { selectedTools: [] }),
+    ).toContain('Available tools:\n(none)');
   });
 });
