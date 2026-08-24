@@ -1,3 +1,10 @@
+## [2.2.1](https://github.com/jwu/pi-subagents/compare/v2.2.0...v2.2.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* support bundled pi CLI invocation ([0651956](https://github.com/jwu/pi-subagents/commit/065195604d1d3b54ea2810f10d20049c4023daf9))
+
 # [2.2.0](https://github.com/jwu/pi-subagents/compare/v2.1.1...v2.2.0) (2026-08-06)
 
 
