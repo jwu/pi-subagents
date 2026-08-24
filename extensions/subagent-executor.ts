@@ -6,8 +6,8 @@ import {
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from './agent-loader.ts';
 import { AUTO_RUNTIME_TOOLS_MARKER } from './subagent-prompt.ts';
 import { resolveSkills } from './skill-resolver.ts';
@@ -59,7 +59,13 @@ export interface AgentResult extends AgentProgress {
 
 export interface PiResolution {
   command: string;
-  entryPoint: string;
+  entryPoint: string | null;
+}
+
+export interface PiRuntime {
+  currentScript?: string;
+  execPath: string;
+  fileExists(filePath: string): boolean;
 }
 
 export interface ProcessInvocation {
@@ -171,14 +177,25 @@ export function subagentSessionDir(
   return path.join(agentDir, 'sessions', safeProject, 'subagents');
 }
 
-export function resolvePiEntryPoint(): PiResolution {
-  const packageEntryPoint = fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent'));
-  const packageRoot = path.dirname(path.dirname(packageEntryPoint));
+export function resolvePiEntryPoint(
+  runtime: PiRuntime = {
+    currentScript: process.argv[1],
+    execPath: process.execPath,
+    fileExists: existsSync,
+  },
+): PiResolution {
+  const currentScript = runtime.currentScript;
+  const isBunVirtualScript = currentScript?.startsWith('/$bunfs/root/');
 
-  return {
-    command: process.execPath,
-    entryPoint: path.join(packageRoot, 'dist', 'cli.js'),
-  };
+  if (currentScript && !isBunVirtualScript && runtime.fileExists(currentScript)) {
+    return { command: runtime.execPath, entryPoint: currentScript };
+  }
+
+  const execName = path.basename(runtime.execPath).toLowerCase();
+  const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
+  if (!isGenericRuntime) return { command: runtime.execPath, entryPoint: null };
+
+  return { command: 'pi', entryPoint: null };
 }
 
 export const defaultRunner: ProcessRunner = (invocation, handlers, signal) =>
@@ -483,7 +500,14 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       modelsPath: options.agentDir ? path.join(options.agentDir, 'models.json') : undefined,
     });
     const modelRegistry = new ModelRegistry(runtime);
-    const args = [pi.entryPoint, '--mode', 'json', '-p', '--no-skills', '--no-prompt-templates'];
+    const args = [
+      ...(pi.entryPoint ? [pi.entryPoint] : []),
+      '--mode',
+      'json',
+      '-p',
+      '--no-skills',
+      '--no-prompt-templates',
+    ];
 
     if (options.agent.systemPromptMode === 'replace-all') args.push('--no-context-files');
     if (options.agent.model) args.push('--model', options.agent.model);

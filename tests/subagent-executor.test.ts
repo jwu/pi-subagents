@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import {
   buildSubagentSystemPrompt,
@@ -43,12 +42,33 @@ describe('buildSubagentSystemPrompt', () => {
 });
 
 describe('resolvePiEntryPoint', () => {
-  test('resolves the pi CLI entry point from the installed package', () => {
-    const resolution = resolvePiEntryPoint();
+  test('reuses the current Pi script instead of resolving the peer dependency', () => {
+    const resolution = resolvePiEntryPoint({
+      currentScript: '/opt/pi/bin/pi',
+      execPath: '/usr/local/bin/node',
+      fileExists: (filePath) => filePath === '/opt/pi/bin/pi',
+    });
 
-    expect(resolution.command).toBe(process.execPath);
-    expect(resolution.entryPoint.endsWith('/dist/cli.js')).toBe(true);
-    expect(existsSync(resolution.entryPoint)).toBe(true);
+    expect(resolution).toEqual({ command: '/usr/local/bin/node', entryPoint: '/opt/pi/bin/pi' });
+  });
+
+  test('uses a compiled Pi binary directly when no script is available', () => {
+    const resolution = resolvePiEntryPoint({
+      execPath: '/opt/pi/pi',
+      fileExists: () => false,
+    });
+
+    expect(resolution).toEqual({ command: '/opt/pi/pi', entryPoint: null });
+  });
+
+  test('falls back to pi on PATH when running under a generic runtime', () => {
+    const resolution = resolvePiEntryPoint({
+      currentScript: '/$bunfs/root/cli.js',
+      execPath: '/usr/local/bin/bun',
+      fileExists: () => true,
+    });
+
+    expect(resolution).toEqual({ command: 'pi', entryPoint: null });
   });
 });
 

@@ -4,7 +4,6 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolvePiEntryPoint } from '../extensions/subagent-executor.ts';
 
 const integrationTest = process.platform === 'win32' ? test.skip : test;
 
@@ -124,11 +123,9 @@ integrationTest(
         ].join('\n'),
       );
 
-      const pi = resolvePiEntryPoint();
       piProcess = spawn(
-        pi.command,
+        'pi',
         [
-          pi.entryPoint,
           '--mode',
           'json',
           '-p',

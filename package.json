@@ -88,8 +88,8 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.3",
-    "@earendil-works/pi-coding-agent": "^0.83.0",
     "@commitlint/config-conventional": "^20.5.3",
+    "@earendil-works/pi-coding-agent": "0.84.3",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/git": "^10.0.1",
