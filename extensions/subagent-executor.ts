@@ -223,14 +223,27 @@ function textFromMessage(message: unknown): string | undefined {
   const content = (message as { content?: unknown }).content;
   if (!Array.isArray(content)) return undefined;
 
+  const texts: string[] = [];
   for (const part of content) {
     if (part && typeof part === 'object' && (part as { type?: unknown }).type === 'text') {
       const text = (part as { text?: unknown }).text;
-      if (typeof text === 'string') return text;
+      if (typeof text === 'string') texts.push(text);
     }
   }
 
-  return undefined;
+  return texts.length > 0 ? texts.join('\n') : undefined;
+}
+
+function isAssistantMessage(message: unknown): boolean {
+  return (
+    !!message && typeof message === 'object' && (message as { role?: unknown }).role === 'assistant'
+  );
+}
+
+function stringMessageProperty(message: unknown, property: 'stopReason' | 'errorMessage') {
+  if (!message || typeof message !== 'object') return undefined;
+  const value = (message as Record<string, unknown>)[property];
+  return typeof value === 'string' ? value : undefined;
 }
 
 type ContextWindowLookup = {
@@ -322,16 +335,16 @@ function usageFromMessages(
   return sawUsage ? aggregate : undefined;
 }
 
-function lastAssistantModel(messages: unknown): string | undefined {
+function lastAssistantMessage(messages: unknown): unknown | undefined {
   if (!Array.isArray(messages)) return undefined;
   for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (!message || typeof message !== 'object') continue;
-    if ((message as { role?: unknown }).role !== 'assistant') continue;
-    const model = modelFromMessage(message);
-    if (model) return model;
+    if (isAssistantMessage(messages[index])) return messages[index];
   }
   return undefined;
+}
+
+function lastAssistantModel(messages: unknown): string | undefined {
+  return modelFromMessage(lastAssistantMessage(messages));
 }
 
 function buildTaskArgument(task: string, taskFilePath: string | undefined): string {
@@ -453,6 +466,8 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
   let stderr = '';
   let model = options.agent.model;
   let stdoutBuffer = '';
+  let finalAssistantStopReason: string | undefined;
+  let finalAssistantErrorMessage: string | undefined;
 
   const progress = (status: AgentProgress['status']): AgentProgress => ({
     agent: options.agent.name,
@@ -468,6 +483,13 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
 
   const emit = (status: AgentProgress['status'] = 'running') =>
     options.onProgress?.(progress(status));
+
+  const setFinalAssistantOutput = (message: unknown) => {
+    // 最后一条 assistant 消息才是权威的最终输出，不能让工具结果占位符或旧文本伪装为结果。
+    output = textFromMessage(message) ?? '';
+    finalAssistantStopReason = stringMessageProperty(message, 'stopReason');
+    finalAssistantErrorMessage = stringMessageProperty(message, 'errorMessage');
+  };
 
   try {
     const promptFilePath = path.join(tempDir, 'system-prompt.md');
@@ -578,8 +600,9 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       }
 
       if (event.type === 'message_end' && event.message) {
-        const text = textFromMessage(event.message);
-        if (text !== undefined) output = text;
+        if (!isAssistantMessage(event.message)) return;
+
+        setFinalAssistantOutput(event.message);
         updateUsage(usage, usageFromMessage(event.message, modelRegistry));
         model = modelFromMessage(event.message) ?? model;
         emit();
@@ -589,6 +612,8 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       if (event.type === 'agent_end') {
         const aggregate = usageFromMessages(event.messages, modelRegistry);
         if (aggregate) replaceUsage(usage, aggregate);
+        const finalAssistantMessage = lastAssistantMessage(event.messages);
+        if (finalAssistantMessage) setFinalAssistantOutput(finalAssistantMessage);
         model = lastAssistantModel(event.messages) ?? model;
         emit();
       }
@@ -616,8 +641,22 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     );
 
     if (stdoutBuffer.trim()) processLine(stdoutBuffer);
-    const isError = exit.exitCode !== 0;
-    if (isError && !output) output = stderr || `Subagent exited with code ${exit.exitCode}`;
+    const failedStopReason =
+      finalAssistantStopReason === 'error' || finalAssistantStopReason === 'aborted';
+    const hasFinalOutput = output.trim().length > 0;
+    const isError = exit.exitCode !== 0 || failedStopReason || !hasFinalOutput;
+
+    if (failedStopReason && finalAssistantErrorMessage) {
+      output = finalAssistantErrorMessage;
+    } else if (isError && !hasFinalOutput) {
+      output =
+        stderr ||
+        (failedStopReason
+          ? `Subagent stopped with reason: ${finalAssistantStopReason}`
+          : exit.exitCode !== 0
+            ? `Subagent exited with code ${exit.exitCode}`
+            : 'Subagent produced no final text output.');
+    }
 
     const truncated = truncateHeadContent(output, OUTPUT_MAX_BYTES, OUTPUT_MAX_LINES);
     if (truncated !== undefined) {

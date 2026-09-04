@@ -381,6 +381,8 @@ describe('runSubagent', () => {
     });
 
     expect(result.model).toBe('deepseek/deepseek-v4-flash');
+    expect(result.isError).toBe(false);
+    expect(result.output).toBe('final');
     expect(result.usage).toEqual({
       input: 400,
       output: 60,
@@ -468,6 +470,89 @@ describe('runSubagent', () => {
     expect(result.isError).toBe(true);
     expect(result.exitCode).toBe(2);
     expect(result.output).toBe('boom');
+  });
+
+  test('returns an assistant-turn API error even when pi exits successfully', async () => {
+    const updates: any[] = [];
+    const result = await runSubagent({
+      agent: baseAgent,
+      task: 'Classify images',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-assistant-error',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      onProgress: (progress) => updates.push(progress),
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: {
+              role: 'toolResult',
+              content: [{ type: 'text', text: 'Read image file [image/png]' }],
+            },
+          }) + '\n',
+        );
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: {
+              role: 'assistant',
+              stopReason: 'error',
+              errorMessage: 'OpenAI API error (400): image is too small.',
+              content: [],
+            },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.status).toBe('error');
+    expect(result.output).toBe('OpenAI API error (400): image is too small.');
+    expect(updates.at(-1)?.status).toBe('error');
+  });
+
+  test('fails instead of returning stale text when the final assistant turn is empty', async () => {
+    const result = await runSubagent({
+      agent: baseAgent,
+      task: 'Classify images',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-empty-final-output',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'Let me read the images first.' }],
+            },
+          }) + '\n',
+        );
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', stopReason: 'end', content: [] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.status).toBe('error');
+    expect(result.output).toBe('Subagent produced no final text output.');
   });
 
   test('cleans up the temp directory and returns a friendly error when spawn fails', async () => {
