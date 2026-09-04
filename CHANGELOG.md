@@ -1,3 +1,10 @@
+## [2.2.2](https://github.com/jwu/pi-subagents/compare/v2.2.1...v2.2.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* surface subagent assistant-turn failures ([b9a3013](https://github.com/jwu/pi-subagents/commit/b9a3013ef9577fea1f634d9fda7b82c4ad09074d))
+
 ## [2.2.1](https://github.com/jwu/pi-subagents/compare/v2.2.0...v2.2.1) (2026-08-24)
 
 
