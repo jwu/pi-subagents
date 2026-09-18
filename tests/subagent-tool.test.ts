@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { registerSubagentTool } from '../extensions/subagent-tool.ts';
 import type { AgentConfig } from '../extensions/agent-loader.ts';
-import type { AgentResult } from '../extensions/subagent-executor.ts';
+import type { AgentProgress, AgentResult } from '../extensions/subagent-executor.ts';
 
 const agent: AgentConfig = {
   name: 'scout',
@@ -730,6 +730,107 @@ describe('registerSubagentTool', () => {
       details: expected,
       isError: false,
     });
+  });
+
+  test('coalesces concurrent running progress updates into a shared refresh window', async () => {
+    const registered: any[] = [];
+    let release: (() => void) | undefined;
+    const completion = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const updates: Array<{ details: AgentProgress }> = [];
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent],
+        run: async (options) => {
+          const running: AgentProgress = {
+            agent: options.task,
+            status: 'running',
+            output: 'first update',
+            tools: [],
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+            startedAt: 1,
+            elapsedMs: 1,
+          };
+          options.onProgress?.(running);
+          options.onProgress?.({ ...running, output: 'latest update', elapsedMs: 2 });
+          await completion;
+          return {
+            ...running,
+            status: 'done',
+            output: 'done',
+            isError: false,
+            exitCode: 0,
+            stderr: '',
+          };
+        },
+      },
+    );
+
+    const executions = ['call-1', 'call-2', 'call-3'].map((toolCallId) =>
+      registered[0].execute(
+        toolCallId,
+        { agent: 'scout', task: toolCallId },
+        undefined,
+        (update: { details: AgentProgress }) => updates.push(update),
+        { cwd: '/repo' },
+      ),
+    );
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    expect(updates).toHaveLength(0);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 125));
+    expect(updates).toHaveLength(3);
+    expect(updates.map((update) => update.details.output)).toEqual([
+      'latest update',
+      'latest update',
+      'latest update',
+    ]);
+
+    release?.();
+    await Promise.all(executions);
+  });
+
+  test('publishes terminal progress without waiting for the shared refresh window', async () => {
+    const registered: any[] = [];
+    const updates: Array<{ details: AgentProgress }> = [];
+    const result: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: 'done',
+      tools: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [agent],
+        run: async (options) => {
+          options.onProgress?.(result);
+          return result;
+        },
+      },
+    );
+
+    await registered[0].execute(
+      'call-1',
+      { agent: 'scout', task: 'Finish immediately' },
+      undefined,
+      (update: { details: AgentProgress }) => updates.push(update),
+      { cwd: '/repo' },
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.details).toBe(result);
   });
 
   test('passes only requested agent allowedAgents as child availableAgents', async () => {

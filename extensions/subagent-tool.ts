@@ -88,6 +88,60 @@ function toProgressResult(progress: AgentProgress) {
   };
 }
 
+const PROGRESS_UPDATE_INTERVAL_MS = 100;
+
+type PendingProgressUpdate = {
+  progress: AgentProgress;
+  onUpdate: AgentToolUpdateCallback<AgentProgress>;
+};
+
+/**
+ * 多个独立 subagent 工具调用共享同一批进度更新窗口，避免每个子进程事件都触发 TUI 重绘。
+ * 每个工具调用只保留最新快照；终态更新不等待窗口，确保完成状态即时可见。
+ */
+class ProgressUpdateCoordinator {
+  private pending = new Map<string, PendingProgressUpdate>();
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  queue(
+    toolCallId: string,
+    progress: AgentProgress,
+    onUpdate?: AgentToolUpdateCallback<AgentProgress>,
+  ) {
+    if (!onUpdate) return;
+    this.pending.set(toolCallId, { progress, onUpdate });
+    if (!this.timer) this.timer = setTimeout(() => this.flush(), PROGRESS_UPDATE_INTERVAL_MS);
+  }
+
+  publishTerminal(
+    toolCallId: string,
+    progress: AgentProgress,
+    onUpdate?: AgentToolUpdateCallback<AgentProgress>,
+  ) {
+    this.pending.delete(toolCallId);
+    this.clearTimerWhenIdle();
+    onUpdate?.(toProgressResult(progress));
+  }
+
+  forget(toolCallId: string) {
+    this.pending.delete(toolCallId);
+    this.clearTimerWhenIdle();
+  }
+
+  private flush() {
+    this.timer = undefined;
+    const updates = [...this.pending.values()];
+    this.pending.clear();
+    for (const { progress, onUpdate } of updates) onUpdate(toProgressResult(progress));
+  }
+
+  private clearTimerWhenIdle() {
+    if (this.pending.size > 0 || !this.timer) return;
+    clearTimeout(this.timer);
+    this.timer = undefined;
+  }
+}
+
 function freshSessionInfo(requested: SubagentSessionMode, warning?: string): SubagentSessionInfo {
   return {
     requested,
@@ -308,6 +362,7 @@ export function registerSubagentTool(
     ? options.agents.filter((candidate) => allowed.has(candidate.name))
     : options.agents;
   const runner = options.run ?? runSubagent;
+  const progressCoordinator = new ProgressUpdateCoordinator();
 
   const availableSubagents = agents.map((agent) => agent.name);
   const agentNames = [...availableSubagents].sort().join(', ');
@@ -340,19 +395,30 @@ export function registerSubagentTool(
 
       const childCwd = params.cwd ?? ctx.cwd;
       const session = resolveSubagentSession(params.session, childCwd, ctx, options.agentDir);
-      const result = await runner({
-        agent,
-        task: params.task,
-        cwd: childCwd,
-        signal,
-        depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
-        availableAgents: availableSubagentsForAgent(agent, availableSubagents),
-        agentDir: options.agentDir,
-        session,
-        onProgress: (progress) => onUpdate?.(toProgressResult(progress)),
-      });
+      try {
+        const result = await runner({
+          agent,
+          task: params.task,
+          cwd: childCwd,
+          signal,
+          depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
+          availableAgents: availableSubagentsForAgent(agent, availableSubagents),
+          agentDir: options.agentDir,
+          session,
+          onProgress: (progress) => {
+            if (progress.status === 'running') {
+              progressCoordinator.queue(_toolCallId, progress, onUpdate);
+            } else {
+              progressCoordinator.publishTerminal(_toolCallId, progress, onUpdate);
+            }
+          },
+        });
 
-      return toToolResult(result);
+        return toToolResult(result);
+      } finally {
+        // Pi 会忽略工具 promise 结算后的 onUpdate；丢弃滞留快照以避免无效的延迟回调。
+        progressCoordinator.forget(_toolCallId);
+      }
     },
 
     renderCall(args, theme, context) {
