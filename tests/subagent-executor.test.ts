@@ -806,6 +806,32 @@ describe('runSubagent', () => {
     expect(promptWrite!.content).toContain('<location>');
   });
 
+  test('attaches missing-skill notices to progress instead of writing to the host terminal', async () => {
+    const result = await runSubagent({
+      agent: { ...baseAgent, skills: ['__pi_subagents_missing_skill__'] },
+      task: 'Be brief',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-missing-skill',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(result.warnings).toEqual(['skill not found: __pi_subagents_missing_skill__']);
+  });
+
   test('does not inject skills block when agent has no skills', async () => {
     const writes: Array<{ filePath: string; content: string }> = [];
 

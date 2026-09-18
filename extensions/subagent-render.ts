@@ -208,6 +208,11 @@ export function formatSubagentResultLines(
     ...(progress.session?.warning
       ? [{ text: `session: ${progress.session.warning}`, kind: 'hint' as const, singleLine: true }]
       : []),
+    ...(progress.warnings ?? []).map((warning) => ({
+      text: `warning: ${warning}`,
+      kind: 'hint' as const,
+      singleLine: true,
+    })),
     ...toolLines,
   ];
 

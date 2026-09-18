@@ -395,6 +395,35 @@ describe('registerSubagentTool', () => {
     expect(expanded[1]).toStartWith('✓ scout');
   });
 
+  test('renders setup warnings in the subagent tool details', () => {
+    const registered: any[] = [];
+    const details: AgentResult = {
+      agent: 'scout',
+      status: 'done',
+      output: 'ok',
+      tools: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 1,
+      elapsedMs: 2,
+      warnings: ['skill not found: obsidian-*'],
+      isError: false,
+      exitCode: 0,
+      stderr: '',
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const rendered = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, testTheme)
+      .render(120)
+      .join('\n');
+
+    expect(rendered).toContain('warning: skill not found: obsidian-*');
+  });
+
   test('highlights collapsed hidden hint as dim and tool rows like renderCall titles', () => {
     const registered: any[] = [];
     const details: AgentResult = {

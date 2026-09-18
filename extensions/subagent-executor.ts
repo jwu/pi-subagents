@@ -49,6 +49,8 @@ export interface AgentProgress {
   elapsedMs: number;
   model?: string;
   session?: SubagentSessionInfo;
+  /** 运行准备阶段的非致命提示，由工具渲染器展示，不能直接写入宿主 TUI。 */
+  warnings?: string[];
 }
 
 export interface AgentResult extends AgentProgress {
@@ -468,6 +470,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
   let stdoutBuffer = '';
   let finalAssistantStopReason: string | undefined;
   let finalAssistantErrorMessage: string | undefined;
+  const warnings: string[] = [];
 
   const progress = (status: AgentProgress['status']): AgentProgress => ({
     agent: options.agent.name,
@@ -479,6 +482,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     elapsedMs: now() - startedAt,
     model,
     session: options.session ?? { requested: 'none', effective: 'none' },
+    ...(warnings.length > 0 ? { warnings: [...warnings] } : {}),
   });
 
   const emit = (status: AgentProgress['status'] = 'running') =>
@@ -499,15 +503,15 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       cwd: options.cwd,
       agentDir: options.agentDir,
     });
-    for (const source of promptResult.skippedSkillPackages) {
-      console.warn(`[pi-subagents] package not installed, skipping skills: ${source}`);
-    }
-    for (const warning of promptResult.skillWarnings) {
-      console.warn(`[pi-subagents] ${warning}`);
-    }
-    for (const name of promptResult.missingSkills) {
-      console.warn(`[pi-subagents] skill not found: ${name}`);
-    }
+    // 子代理可能在 fullscreen 工具视图中运行。直接 console.warn 会绕过工具渲染，
+    // 污染宿主的聊天输入区域；把非致命提示附到工具进度中交给渲染器显示。
+    warnings.push(
+      ...promptResult.skippedSkillPackages.map(
+        (source) => `package not installed, skipping skills: ${source}`,
+      ),
+      ...promptResult.skillWarnings,
+      ...promptResult.missingSkills.map((name) => `skill not found: ${name}`),
+    );
     await fileSystem.writeFile(promptFilePath, promptResult.prompt);
 
     let taskFilePath: string | undefined;
