@@ -1,3 +1,11 @@
+## [2.2.3](https://github.com/jwu/pi-subagents/compare/v2.2.2...v2.2.3) (2026-09-18)
+
+
+### Bug Fixes
+
+* keep subagent warnings in tool details ([2168ab0](https://github.com/jwu/pi-subagents/commit/2168ab010109af3119780dc28a110dbc7baa12c9))
+* throttle concurrent subagent progress updates ([46807f5](https://github.com/jwu/pi-subagents/commit/46807f5f3f2d15dab7f0d79fa4710ecf3f6cf572))
+
 ## [2.2.2](https://github.com/jwu/pi-subagents/compare/v2.2.1...v2.2.2) (2026-09-04)
 
 
