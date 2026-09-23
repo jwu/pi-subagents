@@ -296,9 +296,9 @@ describe('runSubagent', () => {
     });
   });
 
-  test('looks up context windows through the Pi 0.80 ModelRuntime registry', async () => {
+  test('looks up context windows through the Pi 0.87 ModelRuntime registry', async () => {
     const result = await runSubagent({
-      agent: { ...baseAgent, model: 'deepseek/deepseek-v4-flash' },
+      agent: { ...baseAgent, model: 'deepseek/deepseek-flash' },
       task: 'Report usage',
       cwd: '/repo',
       tempRoot: '/tmp/pi-subagents-test',
@@ -315,7 +315,7 @@ describe('runSubagent', () => {
             message: {
               role: 'assistant',
               provider: 'deepseek',
-              model: 'deepseek-v4-flash',
+              model: 'deepseek-flash',
               usage: { input: 100, output: 20, totalTokens: 70 },
               content: [{ type: 'text', text: 'usage reported' }],
             },
