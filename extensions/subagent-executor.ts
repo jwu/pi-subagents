@@ -27,6 +27,10 @@ export interface AgentToolLog {
   name: string;
   args: Record<string, unknown>;
   status: 'running' | 'done';
+  /** 工具开始执行的时间戳；缺省表示历史数据，渲染时省略该工具耗时。 */
+  startedAt?: number;
+  /** 到快照时刻为止的耗时；运行中的工具由渲染层结合 startedAt 实时推进。 */
+  elapsedMs?: number;
   nested?: AgentProgress;
 }
 
@@ -472,18 +476,25 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
   let finalAssistantErrorMessage: string | undefined;
   const warnings: string[] = [];
 
-  const progress = (status: AgentProgress['status']): AgentProgress => ({
-    agent: options.agent.name,
-    status,
-    output,
-    tools: [...tools],
-    usage: { ...usage },
-    startedAt,
-    elapsedMs: now() - startedAt,
-    model,
-    session: options.session ?? { requested: 'none', effective: 'none' },
-    ...(warnings.length > 0 ? { warnings: [...warnings] } : {}),
-  });
+  const progress = (status: AgentProgress['status']): AgentProgress => {
+    const at = now();
+    return {
+      agent: options.agent.name,
+      status,
+      output,
+      // 每个快照复制工具行，避免后续事件改动已经发出去的进度对象。
+      tools: tools.map((tool) => ({
+        ...tool,
+        elapsedMs: tool.status === 'running' ? at - (tool.startedAt ?? at) : tool.elapsedMs,
+      })),
+      usage: { ...usage },
+      startedAt,
+      elapsedMs: at - startedAt,
+      model,
+      session: options.session ?? { requested: 'none', effective: 'none' },
+      ...(warnings.length > 0 ? { warnings: [...warnings] } : {}),
+    };
+  };
 
   const emit = (status: AgentProgress['status'] = 'running') =>
     options.onProgress?.(progress(status));
@@ -581,6 +592,8 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
               ? (event.args as Record<string, unknown>)
               : {},
           status: 'running',
+          startedAt: now(),
+          elapsedMs: 0,
         });
         emit();
         return;
@@ -598,7 +611,10 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       if (event.type === 'tool_execution_end') {
         const id = String(event.toolCallId ?? '');
         const tool = tools.find((item) => item.id === id);
-        if (tool) tool.status = 'done';
+        if (tool) {
+          tool.status = 'done';
+          tool.elapsedMs = now() - (tool.startedAt ?? now());
+        }
         emit();
         return;
       }

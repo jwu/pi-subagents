@@ -23,6 +23,7 @@ import {
 import {
   contextUsageSeverity,
   formatSubagentCall,
+  formatSubagentDuration,
   formatSubagentResultLines,
   formatUsage,
   type SubagentResultLine,
@@ -298,9 +299,12 @@ function styledCollapsedLine(
   if (line.kind === 'status')
     return theme.fg(details.status === 'error' ? 'error' : 'success', line.text);
   if (line.kind === 'hint') return theme.fg('dim', line.text);
+  if (line.kind === 'duration') return theme.fg('muted', line.text);
   if (line.kind === 'tool' && line.tool) {
     const prefix = line.tool.status === 'running' ? theme.fg('warning', '▸') : ' ';
-    return `${prefix} ${styledToolTitle(line.tool.name, line.tool.args, theme)}`;
+    const pad = ' '.repeat(line.indent ?? 0);
+    const suffix = line.suffix ? theme.fg('muted', line.suffix) : '';
+    return `${pad}${prefix} ${styledToolTitle(line.tool.name, line.tool.args, theme)}${suffix}`;
   }
   if (line.kind === 'usage') return theme.fg(contextUsageSeverity(details.usage), line.text);
   return line.text;
@@ -323,7 +327,9 @@ function renderResultLines(
     expanded: boolean;
     suppressOutput?: boolean;
     suppressUsage?: boolean;
+    suppressDuration?: boolean;
     expandHint?: string;
+    now?: () => number;
   },
 ): Container {
   const container = new Container();
@@ -342,11 +348,32 @@ function renderResultLines(
 function renderCollapsedResult(
   details: AgentResult | AgentProgress,
   theme: CollapsedTheme,
+  now?: () => number,
 ): Container {
   return renderResultLines(details, theme, {
     expanded: false,
     expandHint: keyHint('app.tools.expand', 'to expand'),
+    now,
   });
+}
+
+/** 子代理运行时只在子进程吐事件时更新，需要自己每秒重绘才能看到耗时走动。 */
+const ELAPSED_REFRESH_INTERVAL_MS = 1000;
+
+interface ResultRenderContext {
+  invalidate: () => void;
+  state: { elapsedInterval?: ReturnType<typeof setInterval> };
+}
+
+function syncElapsedRefresh(enabled: boolean, context: ResultRenderContext | undefined): void {
+  if (!context) return;
+  const state = context.state;
+  if (enabled && !state.elapsedInterval) {
+    state.elapsedInterval = setInterval(() => context.invalidate(), ELAPSED_REFRESH_INTERVAL_MS);
+  } else if (!enabled && state.elapsedInterval) {
+    clearInterval(state.elapsedInterval);
+    state.elapsedInterval = undefined;
+  }
 }
 
 export function registerSubagentTool(
@@ -426,18 +453,23 @@ export function registerSubagentTool(
       return new Text(styledSubagentCall(typedArgs, theme, context.expanded), 0, 0);
     },
 
-    renderResult(result, options, theme) {
+    renderResult(result, options, theme, context?: ResultRenderContext) {
       const details = result.details as AgentResult | AgentProgress | undefined;
       if (!details) {
         const first = result.content[0];
         return new Text(first?.type === 'text' ? first.text : '(no output)', 0, 0);
       }
 
+      syncElapsedRefresh(details.status === 'running', context);
+      const now = Date.now;
+
       if (options.expanded) {
         const container = renderResultLines(details, theme, {
           expanded: true,
           suppressOutput: true,
           suppressUsage: true,
+          suppressDuration: true,
+          now,
         });
         container.addChild(new Spacer(1));
         container.addChild(new Markdown(details.output || '(no output)', 0, 0, getMarkdownTheme()));
@@ -445,10 +477,14 @@ export function registerSubagentTool(
         container.addChild(
           new Text(theme.fg(contextUsageSeverity(details.usage), formatUsage(details)), 0, 0),
         );
+        // 耗时固定收在最下面一行，与收起态保持一致。
+        container.addChild(
+          new Text(theme.fg('muted', formatSubagentDuration(details, { now })), 0, 0),
+        );
         return container;
       }
 
-      return renderCollapsedResult(details, theme);
+      return renderCollapsedResult(details, theme, now);
     },
   });
 }

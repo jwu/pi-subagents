@@ -395,6 +395,126 @@ describe('registerSubagentTool', () => {
     expect(expanded[1]).toStartWith('✓ scout');
   });
 
+  test('refreshes running results on a timer and stops it once the run settles', () => {
+    const registered: any[] = [];
+    const running: AgentProgress = {
+      agent: 'scout',
+      status: 'running',
+      output: '',
+      tools: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: Date.now(),
+      elapsedMs: 0,
+    };
+    const state: { elapsedInterval?: ReturnType<typeof setInterval> } = {};
+    const context = { invalidate: () => undefined, state };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    registered[0].renderResult(
+      { content: [], details: running },
+      { expanded: false },
+      testTheme,
+      context,
+    );
+    expect(state.elapsedInterval).toBeDefined();
+
+    registered[0].renderResult(
+      { content: [], details: { ...running, status: 'done' as const } },
+      { expanded: false },
+      testTheme,
+      context,
+    );
+    expect(state.elapsedInterval).toBeUndefined();
+  });
+
+  test('keeps tool durations in the rendered tool rows', () => {
+    const registered: any[] = [];
+    const details: AgentProgress = {
+      agent: 'scout',
+      status: 'done',
+      output: 'ok',
+      tools: [
+        {
+          id: '1',
+          name: 'read',
+          args: { path: 'a.ts' },
+          status: 'done',
+          startedAt: 0,
+          elapsedMs: 1200,
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 0,
+      elapsedMs: 2000,
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const collapsed = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, testTheme)
+      .render(120)
+      .join('\n');
+    const expanded = registered[0]
+      .renderResult({ content: [], details }, { expanded: true }, markerTheme)
+      .render(120)
+      .join('\n');
+
+    expect(collapsed).toContain('read a.ts · 1.2s');
+    // 标题重建后仍得带上耗时，并且用 muted 弱化。
+    expect(expanded).toContain('<accent>a.ts</accent><muted> · 1.2s</muted>');
+  });
+
+  test('indents nested subagent tool rows in the rendered view', () => {
+    const registered: any[] = [];
+    const details: AgentProgress = {
+      agent: 'scout',
+      status: 'running',
+      output: '',
+      tools: [
+        {
+          id: 'parent',
+          name: 'subagent',
+          args: { agent: 'researcher' },
+          status: 'running',
+          nested: {
+            agent: 'researcher',
+            status: 'running',
+            output: '',
+            tools: [
+              { id: 'n1', name: 'webfetch', args: { url: 'https://example.com' }, status: 'done' },
+            ],
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+            startedAt: 0,
+            elapsedMs: 1000,
+          },
+        },
+      ],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0 },
+      startedAt: 0,
+      elapsedMs: 1000,
+    };
+
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      { agents: [agent] },
+    );
+
+    const rendered = registered[0]
+      .renderResult({ content: [], details }, { expanded: false }, testTheme)
+      .render(120)
+      .join('\n');
+
+    expect(rendered).toContain('  ▸ researcher');
+    expect(rendered).toContain('    webfetch https://example.com');
+  });
+
   test('renders setup warnings in the subagent tool details', () => {
     const registered: any[] = [];
     const details: AgentResult = {
@@ -561,10 +681,12 @@ describe('registerSubagentTool', () => {
       .render(1000)
       .map((line: string) => line.trimEnd());
 
-    expect(lines.at(-1)).toBe('1.9%/1m ↑11.6k ↓7.1k R132.7k $0.004');
-    expect(lines.at(-2)).toBe('');
+    // 耗时固定收在最下面一行。
+    expect(lines.at(-1)).toBe('Took 0.0s');
+    expect(lines.at(-2)).toBe('1.9%/1m ↑11.6k ↓7.1k R132.7k $0.004');
+    expect(lines.at(-3)).toBe('');
     expect(lines.findIndex((line: string) => line.includes('Final'))).toBeLessThan(
-      lines.length - 2,
+      lines.length - 3,
     );
   });
 

@@ -12,8 +12,22 @@ const result: AgentResult = {
   status: 'done',
   output: 'First paragraph.\n\nSecond paragraph.\n\n```ts\nconst x = 1;\n```\n\nThird paragraph.',
   tools: [
-    { id: '1', name: 'read', args: { path: 'README.md' }, status: 'done' },
-    { id: '2', name: 'grep', args: { pattern: 'TODO' }, status: 'running' },
+    {
+      id: '1',
+      name: 'read',
+      args: { path: 'README.md' },
+      status: 'done',
+      startedAt: 0,
+      elapsedMs: 2100,
+    },
+    {
+      id: '2',
+      name: 'grep',
+      args: { pattern: 'TODO' },
+      status: 'running',
+      startedAt: 2500,
+      elapsedMs: 300,
+    },
   ],
   usage: {
     input: 1200,
@@ -123,7 +137,8 @@ describe('subagent rendering text', () => {
     );
 
     expect(text).toContain('▸ subagent researcher');
-    expect(text).toContain('  ▸ researcher (anthropic/claude-haiku-4-5) — 1 tools · 1s');
+    expect(text).toContain('  ▸ researcher (anthropic/claude-haiku-4-5) — 1 tools');
+    expect(text).toContain('  Elapsed 1.0s');
     expect(text).toContain('    webfetch https://example.com');
   });
 
@@ -167,9 +182,12 @@ describe('subagent rendering text', () => {
       { expanded: false },
     );
 
-    expect(text).toContain('▸ scout (anthropic/claude-haiku-4-5) — 2 tools · 90s');
-    expect(text).toContain('  read README.md');
-    expect(text).toContain('▸ grep /TODO/ in .');
+    expect(text).toContain('▸ scout (anthropic/claude-haiku-4-5) — 2 tools');
+    expect(text).toContain('  read README.md · 2.1s');
+    expect(text).toContain('▸ grep /TODO/ in . · 0.3s');
+    expect(text).toContain('Elapsed 90.0s');
+    // 耗时固定收在最后一行（usage 之后）。
+    expect(text.split('\n').at(-1)).toBe('Elapsed 90.0s');
     expect(text).not.toContain('This should not be shown while running.');
     expect(text).toContain('16.4%/272k ↑99k ↓5.1k R401k $0.850');
   });
@@ -354,15 +372,45 @@ describe('subagent rendering text', () => {
     expect(text).toContain('paragraph 6');
   });
 
+  test('advances running durations with the injected clock', () => {
+    const text = formatSubagentResultText(
+      { ...result, status: 'running' },
+      { expanded: false, now: () => 4000 },
+    );
+
+    // 已结束的工具用定格值，运行中的用时钟算。
+    expect(text).toContain('  read README.md · 2.1s');
+    expect(text).toContain('▸ grep /TODO/ in . · 1.5s');
+    expect(text).toContain('Elapsed 4.0s');
+  });
+
+  test('keeps leftover running tool durations at their snapshot once the run settles', () => {
+    // 子进程如果在 tool_execution_start 后异常退出，工具会停在 running；
+    // 终态渲染不能再拿当前时间减 startedAt，否则同一份结果两次渲染会不同。
+    const first = formatSubagentResultText(
+      { ...result, status: 'error' },
+      { expanded: false, now: () => 4000 },
+    );
+    const later = formatSubagentResultText(
+      { ...result, status: 'error' },
+      { expanded: false, now: () => 99999 },
+    );
+
+    expect(first).toContain('▸ grep /TODO/ in . · 0.3s');
+    expect(later).toContain('▸ grep /TODO/ in . · 0.3s');
+    expect(later).toContain('Took 2.3s');
+  });
+
   test('formats collapsed result with status, tool logs, summary, and usage', () => {
     const text = formatSubagentResultText(result, { expanded: false });
 
-    expect(text).toContain('✓ scout (anthropic/claude-haiku-4-5) — 2 tools · 2s');
-    expect(text).toContain('  read README.md');
-    expect(text).toContain('▸ grep /TODO/ in .');
+    expect(text).toContain('✓ scout (anthropic/claude-haiku-4-5) — 2 tools');
+    expect(text).toContain('  read README.md · 2.1s');
+    expect(text).toContain('Took 2.3s');
     expect(text).toContain(
       'First paragraph.\n\nSecond paragraph.\n\n```ts\nconst x = 1;\n```\n\nThird paragraph.',
     );
     expect(text).toContain('70.0%/100k ↑1.2k ↓345 R10 W20 $0.012');
+    expect(text.split('\n').at(-1)).toBe('Took 2.3s');
   });
 });

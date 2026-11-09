@@ -448,6 +448,56 @@ describe('runSubagent', () => {
     expect(updates.some((update) => update.tools[0]?.nested?.agent === 'researcher')).toBe(true);
   });
 
+  test('records per-tool durations and freezes them when a tool ends', async () => {
+    const updates: any[] = [];
+    let clock = 1000;
+
+    await runSubagent({
+      agent: baseAgent,
+      task: 'Measure tools',
+      cwd: '/repo',
+      tempRoot: '/tmp/pi-subagents-test',
+      now: () => (clock += 500),
+      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
+      fs: {
+        makeTempDir: async () => '/tmp/pi-subagents-test/run-durations',
+        writeFile: async () => undefined,
+        removeDir: async () => undefined,
+      },
+      onProgress: (progress) => updates.push(progress),
+      runner: async (_invocation, handlers) => {
+        handlers.stdout(
+          JSON.stringify({
+            type: 'tool_execution_start',
+            toolCallId: 't1',
+            toolName: 'read',
+            args: { path: 'a.ts' },
+          }) + '\n',
+        );
+        handlers.stdout(
+          JSON.stringify({ type: 'tool_execution_end', toolCallId: 't1', toolName: 'read' }) + '\n',
+        );
+        handlers.stdout(
+          JSON.stringify({
+            type: 'message_end',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          }) + '\n',
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    const running = updates.find((update) => update.tools[0]?.status === 'running');
+    expect(typeof running.tools[0].startedAt).toBe('number');
+    expect(running.tools[0].elapsedMs).toBeGreaterThan(0);
+
+    const finished = updates.filter((update) => update.tools[0]?.status === 'done');
+    expect(finished.length).toBeGreaterThan(1);
+    // 结束后的快照不能再把耗时算下去。
+    expect(finished.at(-1)!.tools[0].elapsedMs).toBe(finished[0].tools[0].elapsedMs);
+    expect(finished[0].tools[0].elapsedMs).toBeGreaterThan(running.tools[0].elapsedMs);
+  });
+
   test('skips non-json stdout lines and returns an error result for non-zero exit', async () => {
     const result = await runSubagent({
       agent: baseAgent,

@@ -1,4 +1,4 @@
-import type { AgentProgress } from './subagent-executor.ts';
+import type { AgentProgress, AgentToolLog } from './subagent-executor.ts';
 import { numberArg, preview, shortenPath, stringArg } from './tool-args.ts';
 
 export interface SubagentCallArgs {
@@ -11,15 +11,23 @@ export interface RenderTextOptions {
   expanded: boolean;
   suppressOutput?: boolean;
   suppressUsage?: boolean;
+  suppressDuration?: boolean;
   expandHint?: string;
+  /** 提供时钟时用它推进运行中的耗时；不提供则用快照里的定格值。 */
+  now?: () => number;
 }
 
-export type SubagentResultLineKind = 'status' | 'tool' | 'hint' | 'usage' | 'output' | 'blank';
+export type SubagentResultLineKind =
+  'status' | 'tool' | 'hint' | 'usage' | 'duration' | 'output' | 'blank';
 
 export interface SubagentResultLine {
   text: string;
   kind: SubagentResultLineKind;
   singleLine: boolean;
+  /** tool 行在着色时用 tool 字段重建标题，耗时后缀得单独带上。 */
+  suffix?: string;
+  /** 嵌套进度的缩进量；着色重建标题时不能依赖 text 里的前缀。 */
+  indent?: number;
   tool?: {
     name: string;
     args: Record<string, unknown>;
@@ -42,8 +50,19 @@ export function contextUsageSeverity(usage: {
   return 'dim';
 }
 
-function elapsedSeconds(ms: number): number {
-  return Math.round(ms / 1000);
+export function formatDuration(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** 运行中的工具从 startedAt 算实时耗时；没有实时时钟时退回快照值。 */
+function toolDuration(tool: AgentToolLog, now: (() => number) | undefined): string | undefined {
+  if (tool.status === 'running') {
+    if (tool.startedAt === undefined) {
+      return tool.elapsedMs === undefined ? undefined : formatDuration(tool.elapsedMs);
+    }
+    return formatDuration(now ? now() - tool.startedAt : (tool.elapsedMs ?? 0));
+  }
+  return tool.elapsedMs === undefined ? undefined : formatDuration(tool.elapsedMs);
 }
 
 function summaryText(markdown: string): string {
@@ -154,6 +173,8 @@ function formatToolLineItems(
   const lines: SubagentResultLine[] = [];
   const hiddenCount = options.expanded ? 0 : Math.max(0, progress.tools.length - TOOL_LOG_LIMIT);
   const visibleTools = progress.tools.slice(hiddenCount);
+  // 整体已结束时不再走实时时钟：残留的 running 工具必须停留在快照耗时上。
+  const liveNow = progress.status === 'running' ? options.now : undefined;
 
   if (hiddenCount > 0) {
     const expandHint = options.expandHint ?? 'to expand';
@@ -165,18 +186,21 @@ function formatToolLineItems(
   }
 
   for (const tool of visibleTools) {
+    const duration = toolDuration(tool, liveNow);
+    const suffix = duration ? ` · ${duration}` : '';
     lines.push({
-      text: `${tool.status === 'running' ? '▸' : ' '} ${formatToolTitle(tool.name, tool.args)}`,
+      text: `${tool.status === 'running' ? '▸' : ' '} ${formatToolTitle(tool.name, tool.args)}${suffix}`,
       kind: 'tool',
       singleLine: true,
+      ...(suffix ? { suffix } : {}),
       tool: { name: tool.name, args: tool.args, status: tool.status },
     });
     if ((options.expanded || progress.status === 'running') && tool.nested) {
-      for (const line of formatSubagentResultLines(tool.nested, {
+      for (const nested of formatSubagentResultLines(tool.nested, {
         expanded: false,
         suppressOutput: true,
       })) {
-        lines.push({ ...line, text: indent(line.text, 2) });
+        lines.push({ ...nested, text: indent(nested.text, 2), indent: (nested.indent ?? 0) + 2 });
       }
     }
   }
@@ -191,17 +215,40 @@ export function formatSubagentCall(
   return `subagent ${args.agent ?? '...'} ${preview(args.task ?? '...', 60)}`;
 }
 
+/** 仿宿主 bash 工具：运行中叫 Elapsed，结束后定格为 Took。放在结果最下面一行。 */
+export function formatSubagentDuration(
+  progress: AgentProgress,
+  options: { now?: () => number } = {},
+): string {
+  const running = progress.status === 'running';
+  // 只有宿主提供了时钟才实时推进耗时；嵌套快照没有自己的时钟，用定格值。
+  const elapsedMs =
+    running && options.now ? options.now() - progress.startedAt : progress.elapsedMs;
+  return `${running ? 'Elapsed' : 'Took'} ${formatDuration(elapsedMs)}`;
+}
+
 export function formatSubagentResultLines(
   progress: AgentProgress,
   options: RenderTextOptions,
 ): SubagentResultLine[] {
+  const running = progress.status === 'running';
   const icon = progress.status === 'error' ? '✗' : progress.status === 'done' ? '✓' : '▸';
   const sessionBadge = progress.session?.effective === 'fork' ? ' [fork]' : '';
   const statusLine = `${icon} ${progress.agent}${sessionBadge}${progress.model ? ` (${progress.model})` : ''} — ${
     progress.tools.length
-  } tools · ${elapsedSeconds(progress.elapsedMs)}s`;
+  } tools`;
   const toolLines = formatToolLineItems(progress, options);
   const usage = formatUsage(progress);
+  const durationLines = (): SubagentResultLine[] =>
+    options.suppressDuration
+      ? []
+      : [
+          {
+            text: formatSubagentDuration(progress, { now: options.now }),
+            kind: 'duration',
+            singleLine: true,
+          },
+        ];
   const lines: SubagentResultLine[] = [
     { text: '', kind: 'blank', singleLine: false },
     { text: statusLine, kind: 'status', singleLine: false },
@@ -216,11 +263,12 @@ export function formatSubagentResultLines(
     ...toolLines,
   ];
 
-  if (progress.status === 'running' || options.suppressOutput) {
+  if (running || options.suppressOutput) {
     if (!options.suppressUsage) {
       lines.push({ text: '', kind: 'blank', singleLine: false });
       lines.push({ text: usage, kind: 'usage', singleLine: false });
     }
+    lines.push(...durationLines());
     return lines;
   }
 
@@ -248,6 +296,7 @@ export function formatSubagentResultLines(
     lines.push({ text: '', kind: 'blank', singleLine: false });
     lines.push({ text: usage, kind: 'usage', singleLine: false });
   }
+  lines.push(...durationLines());
   return lines;
 }
 
