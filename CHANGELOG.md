@@ -1,3 +1,10 @@
+# [2.3.0](https://github.com/jwu/pi-subagents/compare/v2.2.3...v2.3.0) (2026-11-09)
+
+
+### Features
+
+* show elapsed and per-tool durations in subagent results ([e672891](https://github.com/jwu/pi-subagents/commit/e672891bca43522141f1be4af0cc0615bd184a79))
+
 ## [2.2.3](https://github.com/jwu/pi-subagents/compare/v2.2.2...v2.2.3) (2026-09-18)
 
 
