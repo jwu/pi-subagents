@@ -195,11 +195,12 @@ describe('registerSubagentTool', () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-subagents-tool-'));
 
     try {
-      const parent = SessionManager.create('/repo', path.join(tempDir, 'parent-sessions'));
-      parent.appendMessage({
-        role: 'user',
-        content: [{ type: 'text', text: 'Only user so far' }],
-      } as any);
+      // 0.99.0 起 SessionManager.create 会在第一条 user 消息时立刻写文件，
+      // 无法再用它模拟“有路径但文件未落盘”的父会话；这里用最小 mock。
+      const parent = {
+        getSessionFile: () => path.join(tempDir, 'parent-sessions', 'missing.jsonl'),
+        getLeafId: () => 'leaf',
+      } as any;
 
       registerSubagentTool(
         { registerTool: (tool: unknown) => registered.push(tool) },
