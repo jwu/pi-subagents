@@ -1,3 +1,10 @@
+## [2.3.1](https://github.com/jwu/pi-subagents/compare/v2.3.0...v2.3.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **deps:** 对齐 pi 1.6.0 依赖范围并更新会话测试 ([24e72ac](https://github.com/jwu/pi-subagents/commit/24e72ac9a584a74eb475ac297fc3170c81d340f1))
+
 # [2.3.0](https://github.com/jwu/pi-subagents/compare/v2.2.3...v2.3.0) (2026-11-09)
 
 
