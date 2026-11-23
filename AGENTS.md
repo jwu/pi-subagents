@@ -16,8 +16,7 @@ pi-subagents — pi 的子代理扩展。向隔离的 pi 子进程委派任务�
 | `extensions/index.ts` | 扩展入口，注册 subagent 工具 |
 | `extensions/subagent-tool.ts` | subagent 工具实现 |
 | `extensions/subagent-executor.ts` | 子进程启动、CLI 参数与环境变量传递 |
-| `extensions/agent-loader.ts` | 代理 .md 文件解析 |
-| `extensions/subagent-prompt.ts` | 运行时系统提示词辅助块（可用子代理、工具与指南） |
+| `extensions/agent-loader.ts` | 共享 `@johnnywu/pi-agent-profiles` 的代理定义加载接口 |
 | `extensions/env-utils.ts` | 子代理递归与运行时环境变量解析 |
 | `tests/` | 单元测试，与被测文件一一对应 |
 

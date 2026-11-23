@@ -1,9 +1,8 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { applyAgentProfile, type AgentProfile } from '@johnnywu/pi-agent-profiles';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadAgentDefinitions } from './agent-loader.ts';
-import { isSubagentReplaceSystemPrompt } from './env-utils.ts';
-import { injectRuntimeToolsBlock } from './subagent-prompt.ts';
 import { registerSubagentTool } from './subagent-tool.ts';
 
 export default async function (pi: ExtensionAPI) {
@@ -17,10 +16,12 @@ export default async function (pi: ExtensionAPI) {
     registerSubagentTool(pi, { agents: result.agents, allowedAgents });
   };
 
-  if (isSubagentReplaceSystemPrompt(process.env)) {
-    pi.on('before_agent_start', (event) => ({
-      systemPrompt: injectRuntimeToolsBlock(event.systemPrompt, event.systemPromptOptions),
-    }));
+  const profilePath = process.env.PI_SUBAGENT_PROFILE;
+  if (profilePath) {
+    const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8')) as AgentProfile;
+    pi.on('before_agent_start', (event) => {
+      applyAgentProfile(profile, event.systemPromptOptions);
+    });
   }
 
   pi.events.on('pi-subagents:configure', (configuration: unknown) => {

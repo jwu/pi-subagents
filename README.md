@@ -84,7 +84,7 @@ Available subagents:
 - test-writer
 ```
 
-The prompt file passed to the child process contains only the agent prompt plus skills. Runtime prompt assembly then depends on `systemPrompt` mode.
+The launcher passes the selected profile to the child Pi. The child applies it through `@johnnywu/pi-agent-profiles` before its first request. Pi renders the selected skills and project context for that session.
 
 ### What goes into the sub-agent system prompt
 
@@ -97,11 +97,11 @@ The prompt file passed to the child process contains only the agent prompt plus 
 | Available tools / Guidelines block                | from default prompt                         | automatically injected after agent body        | automatically injected after agent body        |
 | Available subagents                               | supplied by active `subagent` tool metadata | supplied by active `subagent` tool metadata   | supplied by active `subagent` tool metadata   |
 
-`append` keeps pi's default prompt and its built-in tools/guidelines block. The agent body and its skills block are appended before pi project context.
+`append` keeps Pi's default prompt and tool guidelines, then adds the agent body after the existing addendum. Pi renders the selected skills in its skills section.
 `replace` swaps out pi's default prompt for the agent body while keeping pi context files.
 `replace-all` is the fully isolated mode: it swaps out pi's default prompt and skips pi context files.
 
-For `replace` and `replace-all`, pi-subagents automatically injects Pi's runtime `Available tools` and `Guidelines` blocks after the agent body and before its skills block. Agent definitions do not need a placeholder.
+For `replace` and `replace-all`, the shared library adds the runtime `Available tools` and `Guidelines` blocks after the agent body, or at the optional `<pi-subagents-runtime-tools />` marker.
 
 Breaking change: the old `replace` behavior is now `replace-all`. Existing agents that need to keep skipping AGENTS.md/CLAUDE.md should change `systemPrompt: replace` to `systemPrompt: replace-all`.
 
@@ -199,7 +199,6 @@ Each file contains one JSON object per line — session headers, messages, tool 
 ## Development
 
 ```bash
-# Install dependencies
 bun install
 
 # Run tests

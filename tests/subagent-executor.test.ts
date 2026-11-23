@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as path from 'node:path';
-import {
-  buildSubagentSystemPrompt,
-  resolvePiEntryPoint,
-  runSubagent,
-} from '../extensions/subagent-executor.ts';
+import { resolvePiEntryPoint, runSubagent } from '../extensions/subagent-executor.ts';
 import type { AgentConfig } from '../extensions/agent-loader.ts';
 
 const baseAgent: AgentConfig = {
@@ -20,26 +16,6 @@ const baseAgent: AgentConfig = {
   source: 'global',
   filePath: '/agents/scout.md',
 };
-
-describe('buildSubagentSystemPrompt', () => {
-  test('automatically inserts the runtime tools marker after replace-mode agent body', async () => {
-    const result = await buildSubagentSystemPrompt({
-      agent: { ...baseAgent, prompt: 'You scout code.' },
-      cwd: '/repo',
-    });
-
-    expect(result.prompt).toBe('You scout code.\n\n<pi-subagents-runtime-tools />');
-  });
-
-  test('does not add a runtime tools marker in append mode', async () => {
-    const result = await buildSubagentSystemPrompt({
-      agent: { ...baseAgent, systemPromptMode: 'append', prompt: 'You scout code.' },
-      cwd: '/repo',
-    });
-
-    expect(result.prompt).toBe('You scout code.');
-  });
-});
 
 describe('resolvePiEntryPoint', () => {
   test('reuses the current Pi script instead of resolving the peer dependency', () => {
@@ -113,6 +89,8 @@ describe('runSubagent', () => {
       '-p',
       '--no-skills',
       '--no-prompt-templates',
+      '-e',
+      expect.stringMatching(/extensions\/index\.ts$/),
       '--no-context-files',
       '--model',
       'anthropic/claude-haiku-4-5',
@@ -120,8 +98,6 @@ describe('runSubagent', () => {
       'low',
       '--tools',
       'read,grep',
-      '--system-prompt',
-      '/tmp/pi-subagents-test/run-1/system-prompt.md',
       '--session-dir',
       '/root/.pi/agent/sessions/--repo--/subagents',
       'Task: List files',
@@ -130,6 +106,9 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_DEPTH).toBe('1');
     expect(calls[0].env.PI_SUBAGENT_MAX_DEPTH).toBe('3');
     expect(calls[0].env.PI_SUBAGENT_NAME).toBe('scout');
+    expect(calls[0].env.PI_SUBAGENT_PROFILE).toBe(
+      '/tmp/pi-subagents-test/run-1/agent-profile.json',
+    );
     expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace-all');
     expect(calls[0].env.PI_SUBAGENT_SESSION).toBe('none');
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('false');
@@ -201,7 +180,7 @@ describe('runSubagent', () => {
       },
     });
 
-    expect(calls[0].args).toContain('--system-prompt');
+    expect(calls[0].args).toContain('-e');
     expect(calls[0].args).not.toContain('--no-context-files');
     expect(calls[0].env.PI_SUBAGENT_SYSTEM_PROMPT_MODE).toBe('replace');
   });
@@ -661,9 +640,9 @@ describe('runSubagent', () => {
       },
     });
 
-    expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.\n\n<pi-subagents-runtime-tools />',
-    );
+    expect(
+      JSON.parse(writes.find((write) => write.filePath.endsWith('agent-profile.json'))!.content),
+    ).toMatchObject({ prompt: 'You scout code.' });
     expect(calls[0].env.PI_SUBAGENT_ALLOWED).toBe('scout');
   });
 
@@ -696,7 +675,7 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('true');
   });
 
-  test('does not inject available subagents into replace-all-mode prompt file', async () => {
+  test('sends the original body to the child for prompt assembly', async () => {
     const writes: Array<{ filePath: string; content: string }> = [];
 
     await runSubagent({
@@ -724,9 +703,9 @@ describe('runSubagent', () => {
       },
     });
 
-    expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.\n\n<pi-subagents-runtime-tools />',
-    );
+    expect(
+      JSON.parse(writes.find((write) => write.filePath.endsWith('agent-profile.json'))!.content),
+    ).toMatchObject({ prompt: 'You scout code.' });
   });
 
   test('filters allowed env by agent allowedAgents', async () => {
@@ -758,9 +737,9 @@ describe('runSubagent', () => {
       },
     });
 
-    expect(writes.find((write) => write.filePath.endsWith('system-prompt.md'))?.content).toBe(
-      'You scout code.\n\n<pi-subagents-runtime-tools />',
-    );
+    expect(
+      JSON.parse(writes.find((write) => write.filePath.endsWith('agent-profile.json'))!.content),
+    ).toMatchObject({ prompt: 'You scout code.' });
   });
 
   test('uses append prompt mode, writes long tasks to a temp file, and cleans up', async () => {
@@ -807,19 +786,19 @@ describe('runSubagent', () => {
     expect(result.output).toBe('ok');
     expect(writes).toEqual([
       {
-        filePath: '/tmp/pi-subagents-test/run-2/system-prompt.md',
-        content: 'You scout code.',
+        filePath: '/tmp/pi-subagents-test/run-2/agent-profile.json',
+        content: expect.stringContaining('You scout code.'),
       },
       { filePath: '/tmp/pi-subagents-test/run-2/task.md', content: longTask },
     ]);
-    expect(calls[0].args).toContain('--append-system-prompt');
+    expect(calls[0].args).toContain('-e');
     expect(calls[0].args).not.toContain('--no-context-files');
     expect(calls[0].args).toContain('Task: @/tmp/pi-subagents-test/run-2/task.md');
     expect(removed).toEqual(['/tmp/pi-subagents-test/run-2']);
   });
 
-  test('injects skills as <available_skills> block into system prompt when agent has skills', async () => {
-    const writes: Array<{ filePath: string; content: string }> = [];
+  test('passes selected skill files to the child Pi', async () => {
+    const calls: string[][] = [];
 
     await runSubagent({
       agent: {
@@ -832,12 +811,11 @@ describe('runSubagent', () => {
       resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
       fs: {
         makeTempDir: async () => '/tmp/pi-subagents-test/run-3',
-        writeFile: async (filePath, content) => {
-          writes.push({ filePath, content });
-        },
+        writeFile: async () => undefined,
         removeDir: async () => {},
       },
-      runner: async (_invocation, handlers) => {
+      runner: async (invocation, handlers) => {
+        calls.push(invocation.args);
         handlers.stdout(
           JSON.stringify({
             type: 'message_end',
@@ -848,12 +826,10 @@ describe('runSubagent', () => {
       },
     });
 
-    const promptWrite = writes.find((w) => w.filePath.endsWith('system-prompt.md'));
-    expect(promptWrite).toBeDefined();
-    expect(promptWrite!.content).toContain('<available_skills>');
-    expect(promptWrite!.content).toContain('<name>caveman</name>');
-    expect(promptWrite!.content).toContain('Ultra-compressed');
-    expect(promptWrite!.content).toContain('<location>');
+    expect(calls[0]).toContain('--skill');
+    expect(calls[0]).toContain(
+      path.resolve(__dirname, 'fixtures/skills-project/.agents/skills/caveman/SKILL.md'),
+    );
   });
 
   test('attaches missing-skill notices to progress instead of writing to the host terminal', async () => {
@@ -880,37 +856,5 @@ describe('runSubagent', () => {
     });
 
     expect(result.warnings).toEqual(['skill not found: __pi_subagents_missing_skill__']);
-  });
-
-  test('does not inject skills block when agent has no skills', async () => {
-    const writes: Array<{ filePath: string; content: string }> = [];
-
-    await runSubagent({
-      agent: { ...baseAgent },
-      task: 'Be brief',
-      cwd: '/repo',
-      tempRoot: '/tmp/pi-subagents-test',
-      resolvePi: async () => ({ command: '/usr/local/bin/node', entryPoint: '/pi/dist/cli.js' }),
-      fs: {
-        makeTempDir: async () => '/tmp/pi-subagents-test/run-4',
-        writeFile: async (filePath, content) => {
-          writes.push({ filePath, content });
-        },
-        removeDir: async () => {},
-      },
-      runner: async (_invocation, handlers) => {
-        handlers.stdout(
-          JSON.stringify({
-            type: 'message_end',
-            message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
-          }) + '\n',
-        );
-        return { exitCode: 0 };
-      },
-    });
-
-    const promptWrite = writes.find((w) => w.filePath.endsWith('system-prompt.md'));
-    expect(promptWrite).toBeDefined();
-    expect(promptWrite!.content).not.toContain('<available_skills>');
   });
 });

@@ -8,8 +8,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { AgentConfig } from './agent-loader.ts';
-import { AUTO_RUNTIME_TOOLS_MARKER } from './subagent-prompt.ts';
 import { resolveSkills } from './skill-resolver.ts';
 
 export interface AgentUsage {
@@ -114,19 +114,6 @@ export interface RunSubagentOptions {
   runner?: ProcessRunner;
   fs?: ExecutorFs;
   now?: () => number;
-}
-
-export interface BuildSubagentSystemPromptOptions {
-  agent: AgentConfig;
-  cwd: string;
-  agentDir?: string;
-}
-
-export interface BuildSubagentSystemPromptResult {
-  prompt: string;
-  missingSkills: string[];
-  skippedSkillPackages: string[];
-  skillWarnings: string[];
 }
 
 const TASK_FILE_THRESHOLD = 8000;
@@ -357,40 +344,6 @@ function buildTaskArgument(task: string, taskFilePath: string | undefined): stri
   return taskFilePath ? `Task: @${taskFilePath}` : `Task: ${task}`;
 }
 
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function formatSkillsForPrompt(
-  skills: Array<{ name: string; description: string; location: string }>,
-): string {
-  if (skills.length === 0) return '';
-
-  const lines = [
-    '\n\nThe following skills provide specialized instructions for specific tasks.',
-    "Use the read tool to load a skill's file when the task matches its description.",
-    'When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.',
-    '',
-    '<available_skills>',
-  ];
-
-  for (const skill of skills) {
-    lines.push('  <skill>');
-    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-    lines.push(`    <location>${escapeXml(skill.location)}</location>`);
-    lines.push('  </skill>');
-  }
-
-  lines.push('</available_skills>');
-  return lines.join('\n');
-}
-
 function byteLength(text: string): number {
   return Buffer.byteLength(text, 'utf8');
 }
@@ -411,39 +364,6 @@ function truncateHeadContent(text: string, maxBytes: number, maxLines: number): 
 
 function safeFilePart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]+/g, '_');
-}
-
-export async function buildSubagentSystemPrompt(
-  options: BuildSubagentSystemPromptOptions,
-): Promise<BuildSubagentSystemPromptResult> {
-  let prompt = options.agent.prompt;
-  if (
-    options.agent.systemPromptMode === 'replace' ||
-    options.agent.systemPromptMode === 'replace-all'
-  ) {
-    prompt = `${prompt}\n\n${AUTO_RUNTIME_TOOLS_MARKER}`;
-  }
-
-  const missingSkills: string[] = [];
-  const skippedSkillPackages: string[] = [];
-  const skillWarnings: string[] = [];
-  const skillNames = options.agent.skills;
-  if (skillNames && skillNames.length > 0) {
-    const resolvedSkills = await resolveSkills(skillNames, {
-      cwd: options.cwd,
-      agentDir: options.agentDir,
-    });
-    missingSkills.push(...resolvedSkills.missing);
-    skippedSkillPackages.push(...resolvedSkills.skippedPackages);
-    skillWarnings.push(...resolvedSkills.warnings);
-
-    const skillInjection = formatSkillsForPrompt(resolvedSkills.resolved);
-    if (skillInjection) {
-      prompt = `${prompt}${skillInjection}`;
-    }
-  }
-
-  return { prompt, missingSkills, skippedSkillPackages, skillWarnings };
 }
 
 function progressFromPartialResult(partialResult: unknown): AgentProgress | undefined {
@@ -507,23 +427,20 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
   };
 
   try {
-    const promptFilePath = path.join(tempDir, 'system-prompt.md');
-
-    const promptResult = await buildSubagentSystemPrompt({
-      agent: options.agent,
+    const profilePath = path.join(tempDir, 'agent-profile.json');
+    const skills = await resolveSkills(options.agent.skills ?? [], {
       cwd: options.cwd,
       agentDir: options.agentDir,
     });
-    // 子代理可能在 fullscreen 工具视图中运行。直接 console.warn 会绕过工具渲染，
-    // 污染宿主的聊天输入区域；把非致命提示附到工具进度中交给渲染器显示。
+    // 诊断随工具结果返回，避免把警告直接写入宿主 TUI。
     warnings.push(
-      ...promptResult.skippedSkillPackages.map(
+      ...skills.skippedPackages.map(
         (source) => `package not installed, skipping skills: ${source}`,
       ),
-      ...promptResult.skillWarnings,
-      ...promptResult.missingSkills.map((name) => `skill not found: ${name}`),
+      ...skills.warnings,
+      ...skills.missing.map((name) => `skill not found: ${name}`),
     );
-    await fileSystem.writeFile(promptFilePath, promptResult.prompt);
+    await fileSystem.writeFile(profilePath, JSON.stringify(options.agent));
 
     let taskFilePath: string | undefined;
     if (options.task.length > TASK_FILE_THRESHOLD) {
@@ -544,16 +461,15 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       '-p',
       '--no-skills',
       '--no-prompt-templates',
+      '-e',
+      fileURLToPath(new URL('./index.ts', import.meta.url)),
+      ...skills.resolved.flatMap(({ location }) => ['--skill', location]),
     ];
 
     if (options.agent.systemPromptMode === 'replace-all') args.push('--no-context-files');
     if (options.agent.model) args.push('--model', options.agent.model);
     args.push('--thinking', options.agent.thinking);
     if (options.agent.tools.length > 0) args.push('--tools', options.agent.tools.join(','));
-    args.push(
-      options.agent.systemPromptMode === 'append' ? '--append-system-prompt' : '--system-prompt',
-      promptFilePath,
-    );
     args.push('--session-dir', subagentSessionDir(options.cwd, options.agentDir));
     if (options.session?.effective === 'fork' && options.session.file) {
       args.push('--session', options.session.file);
@@ -565,6 +481,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
       PI_SUBAGENT_DEPTH: String(options.depth ?? 1),
       PI_SUBAGENT_MAX_DEPTH: String(options.agent.maxDepth),
       PI_SUBAGENT_NAME: options.agent.name,
+      PI_SUBAGENT_PROFILE: profilePath,
       PI_SUBAGENT_SYSTEM_PROMPT_MODE: options.agent.systemPromptMode,
       PI_SUBAGENT_SESSION: options.session?.effective ?? 'none',
     };

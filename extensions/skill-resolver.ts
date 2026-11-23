@@ -4,6 +4,7 @@ import {
   getAgentDir,
   type ResolvedResource,
 } from '@earendil-works/pi-coding-agent';
+import { selectAgentSkills } from '@johnnywu/pi-agent-profiles';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -244,15 +245,6 @@ async function getCollectedSkills(options: ResolveSkillsOptions): Promise<Collec
   return cached;
 }
 
-function wildcardToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}
-
-function hasWildcard(pattern: string): boolean {
-  return pattern.includes('*');
-}
-
 export async function resolveSkills(
   skillNames: string[],
   options: ResolveSkillsOptions,
@@ -263,34 +255,9 @@ export async function resolveSkills(
   }
 
   const collected = await getCollectedSkills(options);
-  const resolved: ResolvedSkill[] = [];
-  const missing: string[] = [];
-  const seen = new Set<string>();
-
-  function addSkill(skill: ResolvedSkill): void {
-    if (seen.has(skill.name)) return;
-    seen.add(skill.name);
-    resolved.push(skill);
-  }
-
-  for (const requestedName of requestedNames) {
-    if (hasWildcard(requestedName)) {
-      const regex = wildcardToRegex(requestedName);
-      let matched = false;
-      for (const skill of collected.byName.values()) {
-        if (!regex.test(skill.name)) continue;
-        matched = true;
-        addSkill(skill);
-      }
-      if (!matched) missing.push(requestedName);
-      continue;
-    }
-
-    const skill = collected.byName.get(requestedName);
-    if (skill) addSkill(skill);
-    else missing.push(requestedName);
-  }
-
+  const { selected: resolved, missing } = selectAgentSkills(requestedNames, [
+    ...collected.byName.values(),
+  ]);
   return {
     resolved,
     missing,
