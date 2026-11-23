@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/jwu/pi-subagents/compare/v2.3.1...v2.4.0) (2026-11-23)
+
+
+### Features
+
+* 使用共享 Agent 配置与提示词库 ([7247d70](https://github.com/jwu/pi-subagents/commit/7247d7015a991555c2670422c945c722cefd01fa))
+
 ## [2.3.1](https://github.com/jwu/pi-subagents/compare/v2.3.0...v2.3.1) (2026-11-21)
 
 
