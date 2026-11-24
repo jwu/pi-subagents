@@ -10,7 +10,7 @@ describe('loadAgentDefinitions', () => {
 name: scout
 description: Fast codebase scout
 tools: read, grep, find, ls
-model: anthropic/claude-haiku-4-5
+models: anthropic/claude-haiku-4-5, deep-*
 thinking: low
 systemPrompt: append
 allowedAgents: scout, researcher
@@ -37,7 +37,7 @@ You inspect code quickly.
       name: 'scout',
       description: 'Fast codebase scout',
       tools: ['read', 'grep', 'find', 'ls'],
-      model: 'anthropic/claude-haiku-4-5',
+      models: ['anthropic/claude-haiku-4-5', 'deep-*'],
       thinking: 'low',
       systemPromptMode: 'append',
       allowedAgents: ['scout', 'researcher'],

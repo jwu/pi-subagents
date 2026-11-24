@@ -8,6 +8,7 @@ import {
   type ThemeColor,
 } from '@earendil-works/pi-coding-agent';
 import { Container, Markdown, Spacer, Text } from '@earendil-works/pi-tui';
+import { selectAgentModel } from '@johnnywu/pi-agent-profiles';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import type { AgentConfig } from './agent-loader.ts';
@@ -36,6 +37,11 @@ const SubagentParams = {
   properties: {
     agent: { type: 'string', description: 'Name of the agent to invoke' },
     task: { type: 'string', description: 'Task to delegate to the agent' },
+    model: {
+      type: 'string',
+      description:
+        'Optional model ID or provider/model ID. Defaults to the first entry in the agent profile’s models list if configured.',
+    },
     cwd: { type: 'string', description: 'Working directory for the agent process' },
     session: {
       type: 'string',
@@ -52,6 +58,7 @@ type SubagentParamsType = {
   agent: string;
   task: string;
   cwd?: string;
+  model?: string;
   session?: SubagentSessionMode;
 };
 
@@ -395,14 +402,20 @@ export function registerSubagentTool(
   const agentNames = [...availableSubagents].sort().join(', ');
   const sessionGuideline =
     'Use session: "fork" when the delegated task depends on the current conversation, prior discussion, or parent session history. Use the default session: "none" for self-contained tasks.';
+  const modelGuidelines = agents.flatMap(({ name, models }) =>
+    models?.length ? [`Allowed models for ${name}: ${models.join(', ')}`] : [],
+  );
   const promptGuidelines =
-    agentNames.length > 0 ? [`Available subagents: ${agentNames}`, sessionGuideline] : undefined;
+    agentNames.length > 0
+      ? [`Available subagents: ${agentNames}`, ...modelGuidelines, sessionGuideline]
+      : undefined;
 
   pi.registerTool({
     name: 'subagent',
     label: 'Subagent',
     description: 'Delegate a task to a named sub-agent running in an isolated pi process.',
-    promptSnippet: 'Delegate isolated tasks with subagent({ agent, task, cwd?, session? }).',
+    promptSnippet:
+      'Delegate isolated tasks with subagent({ agent, task, cwd?, model?, session? }).',
     promptGuidelines,
     parameters: SubagentParams,
 
@@ -420,11 +433,13 @@ export function registerSubagentTool(
         );
       }
 
+      const model = selectAgentModel(agent, params.model, () => ctx.modelRegistry.getAvailable());
       const childCwd = params.cwd ?? ctx.cwd;
       const session = resolveSubagentSession(params.session, childCwd, ctx, options.agentDir);
       try {
         const result = await runner({
           agent,
+          model,
           task: params.task,
           cwd: childCwd,
           signal,

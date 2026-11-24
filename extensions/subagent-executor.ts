@@ -3,6 +3,7 @@ import {
   ModelRuntime,
   withFileMutationQueue,
 } from '@earendil-works/pi-coding-agent';
+import { selectAgentModel } from '@johnnywu/pi-agent-profiles';
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -100,6 +101,7 @@ export interface ExecutorFs {
 
 export interface RunSubagentOptions {
   agent: AgentConfig;
+  model?: string;
   task: string;
   cwd: string;
   signal?: AbortSignal;
@@ -390,7 +392,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
   const tools: AgentToolLog[] = [];
   let output = '';
   let stderr = '';
-  let model = options.agent.model;
+  let model: string | undefined;
   let stdoutBuffer = '';
   let finalAssistantStopReason: string | undefined;
   let finalAssistantErrorMessage: string | undefined;
@@ -467,7 +469,10 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     ];
 
     if (options.agent.systemPromptMode === 'replace-all') args.push('--no-context-files');
-    if (options.agent.model) args.push('--model', options.agent.model);
+    model =
+      options.model ??
+      selectAgentModel(options.agent, undefined, () => modelRegistry.getAvailable());
+    if (model) args.push('--model', model);
     args.push('--thinking', options.agent.thinking);
     if (options.agent.tools.length > 0) args.push('--tools', options.agent.tools.join(','));
     args.push('--session-dir', subagentSessionDir(options.cwd, options.agentDir));

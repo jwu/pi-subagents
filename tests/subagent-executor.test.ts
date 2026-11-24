@@ -7,7 +7,7 @@ const baseAgent: AgentConfig = {
   name: 'scout',
   description: 'Scout',
   tools: ['read', 'grep'],
-  model: 'anthropic/claude-haiku-4-5',
+  models: ['anthropic/claude-haiku-4-5'],
   thinking: 'low',
   systemPromptMode: 'replace-all',
   maxDepth: 3,
@@ -277,7 +277,7 @@ describe('runSubagent', () => {
 
   test('looks up context windows through the Pi 0.87 ModelRuntime registry', async () => {
     const result = await runSubagent({
-      agent: { ...baseAgent, model: 'deepseek/deepseek-flash' },
+      agent: { ...baseAgent, models: ['deepseek/deepseek-flash'] },
       task: 'Report usage',
       cwd: '/repo',
       tempRoot: '/tmp/pi-subagents-test',

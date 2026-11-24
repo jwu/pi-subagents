@@ -21,7 +21,7 @@ Create a `.pi/agents/code-reviewer.md` file in your project:
 name: code-reviewer
 description: Reviews code changes for correctness and style
 tools: read, grep, find, ls, bash
-model: anthropic/claude-sonnet-4-6
+models: anthropic/claude-sonnet-4-6, magpie/claude/*, deep-*
 thinking: low
 ---
 
@@ -122,14 +122,14 @@ The child process writes `debug-system-prompt.md` in the project cwd. The file c
 
 ## Agent configuration
 
-Agents are Markdown files with YAML frontmatter.
+Agents are Markdown files with scalar frontmatter.
 
 | Field           | Required | Default        | Description                                                                                                                                                                                                                                                                                                             |
 | --------------- | -------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`          | **yes**  | —              | Unique agent identifier                                                                                                                                                                                                                                                                                                 |
 | `description`   | no       | —              | Human-readable summary                                                                                                                                                                                                                                                                                                  |
 | `tools`         | no       | _none_         | Comma-separated tool whitelist (`read, write, bash, grep`, etc.)                                                                                                                                                                                                                                                        |
-| `model`         | no       | parent's model | Provider/model-id (`anthropic/claude-sonnet-4-6`)                                                                                                                                                                                                                                                                       |
+| `models`        | no       | Pi default     | Comma-separated model IDs or `*` patterns. |
 | `thinking`      | no       | `off`          | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`                                                                                                                                                                                                                                                     |
 | `systemPrompt`  | no       | `append`       | How the body is applied: `append` (append to pi default system prompt and project context), `replace` (replace pi default prompt while keeping project context), or `replace-all` (replace pi default prompt and skip project context). In `replace` modes, the runtime tools/guidelines block is injected automatically. |
 | `skills`        | no       | _none_         | Comma-separated skill names or simple wildcard patterns (`*`, `obsidian-*`) to load (resolved from project `.agents/skills/`, `.pi/skills/`, global `~/.pi/agent/skills/`, or npm packages)                                                                                                                             |
@@ -138,6 +138,8 @@ Agents are Markdown files with YAML frontmatter.
 | `debug`         | no       | `false`        | When `true`, export the effective runtime system prompt to `debug-system-prompt.md`                                                                                                                                                                                                                                     |
 
 The Markdown body after the frontmatter is the agent's system prompt.
+
+Pass a specific model with `subagent({ agent: 'code-reviewer', task: 'Review the changes', model: 'magpie/claude/sonnet' })`. The tool rejects models outside the profile's list before starting the child. Omitting `model` selects the first configured entry. If that entry contains `*`, the tool picks the first available Pi model that matches or reports a missing match. An omitted or empty `models` list allows any selection. Rename an existing `model:` field to `models:`. Profiles with the old field produce a warning and are skipped.
 
 `skills` entries match the skill frontmatter `name`. Use `skills: *` to load all available skills, or prefix-style patterns such as `skills: obsidian-*` to load matching skills. Only `*` is supported as a wildcard; glob features like `?` or `{a,b}` are not supported.
 
@@ -148,7 +150,7 @@ The Markdown body after the frontmatter is the agent's system prompt.
 name: orchestrator
 description: High-level planner that delegates to specialists
 tools: subagent, read, grep, find
-model: anthropic/claude-sonnet-4-6
+models: anthropic/claude-sonnet-4-6, magpie/claude/*, deep-*
 thinking: high
 systemPrompt: append
 skills: tdd, obsidian-*

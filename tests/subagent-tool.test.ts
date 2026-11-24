@@ -58,6 +58,38 @@ describe('registerSubagentTool', () => {
     ).rejects.toThrow('Unknown agent: writer. Available agents: scout.');
   });
 
+  test('validates a caller model and forwards the resolved default or selection to the runner', async () => {
+    const registered: any[] = [];
+    const models: Array<string | undefined> = [];
+    registerSubagentTool(
+      { registerTool: (tool: unknown) => registered.push(tool) },
+      {
+        agents: [{ ...agent, models: ['magpie/claude/*', 'deep-*'] }],
+        run: async ({ model }) => {
+          models.push(model);
+          return { output: 'done' } as AgentResult;
+        },
+      },
+    );
+
+    const ctx = {
+      cwd: '/repo',
+      modelRegistry: { getAvailable: () => [{ provider: 'magpie', id: 'claude/sonnet' }] },
+    };
+    const invoke = (model?: string) =>
+      registered[0].execute(
+        'call-1',
+        { agent: 'scout', task: 'Scout', model },
+        undefined,
+        undefined,
+        ctx,
+      );
+    await invoke();
+    await invoke('deepseek/deep-flash');
+    await expect(invoke('other/model')).rejects.toThrow('Model "other/model" is not allowed');
+    expect(models).toEqual(['magpie/claude/sonnet', 'deepseek/deep-flash']);
+  });
+
   test('does not register subagent when current process is past max depth', () => {
     const registered: any[] = [];
 
