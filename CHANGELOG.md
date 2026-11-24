@@ -1,3 +1,10 @@
+# [2.5.0](https://github.com/jwu/pi-subagents/compare/v2.4.0...v2.5.0) (2026-11-24)
+
+
+### Features
+
+* allow callers to select subagent models ([095e940](https://github.com/jwu/pi-subagents/commit/095e9406b44339d63273d533070c4e452c20ff05))
+
 # [2.4.0](https://github.com/jwu/pi-subagents/compare/v2.3.1...v2.4.0) (2026-11-23)
 
 
