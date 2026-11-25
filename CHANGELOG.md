@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/jwu/pi-subagents/compare/v2.5.0...v2.6.0) (2026-11-25)
+
+
+### Features
+
+* count maxDepth from each agent and share the delegation scope contract ([e9cfa9e](https://github.com/jwu/pi-subagents/commit/e9cfa9eae362f2c464af87667149628a7ef57d18))
+
 # [2.5.0](https://github.com/jwu/pi-subagents/compare/v2.4.0...v2.5.0) (2026-11-24)
 
 
