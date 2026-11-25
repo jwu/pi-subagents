@@ -17,7 +17,7 @@ _避免使用_：Agent config、agent profile
 _避免使用_：Prompt、job、command
 
 **允许的代理（`allowedAgents`）**：
-可选的 frontmatter 字段，限制某个代理可以派发哪些子代理。由父进程在子进程启动前强制执行——子进程永远不会看到其父代理允许列表之外的代理名称。
+可选的 frontmatter 字段，限制某个代理可以派发哪些子代理。由父进程在子进程启动前强制执行——子进程永远不会看到其父代理允许列表之外的代理名称。本代理的列表与父进程自身的列表没有交集时，子进程不能派发任何代理。未声明或留空表示不追加限制。
 _避免使用_：subagent_agents、agent allowlist、spawn restriction
 
 **工具（`tools`）**：
@@ -57,7 +57,7 @@ _避免使用_：reasoning level、think mode
 _避免使用_：agent folder、agent config directory
 
 **最大深度（`maxDepth`）**：
-从本代理向下允许的最大递归深度。从本代理自身层级开始计数：`maxDepth: 0` 表示不允许派发子代理，`maxDepth: 1` 允许派发一层子代理，以此类推。若代理拥有 `subagent` 工具但未声明显式值，默认为 10。通过传递给子进程的 `PI_SUBAGENT_DEPTH` 和 `PI_SUBAGENT_MAX_DEPTH` 环境变量强制执行。
+从本代理向下允许的最大递归深度。从本代理自身层级开始计数，与它被放在第几层无关：`maxDepth: 0` 表示不允许派发子代理，`maxDepth: 1` 允许派发一层子代理，以此类推。未声明时默认为 10。上限沿派发链向下传递，后代只能收紧、不能放宽：a 派发 b、b 派发 c、c 派发 d，且 a、b、c 都声明 `maxDepth: 3` 时，d 已在 a 之下第 3 层，不能再派发。通过传递给子进程的 `PI_SUBAGENT_DEPTH`（所在层）和 `PI_SUBAGENT_MAX_DEPTH`（最深还能派发的层号，取自身预算与继承上限的较小值）环境变量强制执行。
 _避免使用_：recursion limit、depth limit、nesting limit
 
 **子代理会话（Session for sub-agents）**：

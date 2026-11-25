@@ -141,6 +141,8 @@ The Markdown body after the frontmatter is the agent's system prompt.
 
 Pass a specific model with `subagent({ agent: 'code-reviewer', task: 'Review the changes', model: 'magpie/claude/sonnet' })`. The tool rejects models outside the profile's list before starting the child. Omitting `model` selects the first configured entry. If that entry contains `*`, the tool picks the first available Pi model that matches or reports a missing match. An omitted or empty `models` list allows any selection. Rename an existing `model:` field to `models:`. Profiles with the old field produce a warning and are skipped.
 
+A field name outside this table is an error: the profile is skipped with a warning, so a misspelled `maxDepth` or `allowedAgents` cannot silently lift a limit.
+
 `skills` entries match the skill frontmatter `name`. Use `skills: *` to load all available skills, or prefix-style patterns such as `skills: obsidian-*` to load matching skills. Only `*` is supported as a wildcard; glob features like `?` or `{a,b}` are not supported.
 
 ### Example with all fields
@@ -178,11 +180,15 @@ Only `.md` files are scanned. Files are parsed at extension load time; parse err
 
 Sub-agents can spawn their own sub-agents (if the `subagent` tool is in their whitelist). Two mechanisms prevent unbounded recursion:
 
-**`maxDepth`** — Hard limit counting from the originating agent. `maxDepth: 0` means the agent cannot spawn sub-agents. `maxDepth: 1` allows one level, etc. Defaults to `10` when the agent has `subagent` in tools.
+**`maxDepth`** — How many levels of sub-agents may run below this agent, counted from the agent's own level wherever it runs. `maxDepth: 0` means the agent cannot spawn sub-agents. `maxDepth: 1` allows one level, etc. Defaults to `10`.
 
-**`allowedAgents`** — Whitelist enforced by the parent before spawning. A child process never sees agent names outside its parent's whitelist.
+The limit passes down the chain, and a descendant can tighten it but not widen it. If `a`, `b`, and `c` each declare `maxDepth: 3`, and `a` spawns `b`, `b` spawns `c`, and `c` spawns `d`, then `d` cannot spawn: it is already three levels below `a`, whatever `c` or `d` declare.
+
+**`allowedAgents`** — Whitelist enforced by the parent before spawning. A child process never sees agent names outside its parent's whitelist. When the profile's list and the parent's own list have no name in common, the child cannot delegate to any agent.
 
 The available-subagents prompt entries respect the same filtering: parent sessions use the currently visible agents, and child sessions only list agents allowed by their parent.
+
+A session that itself runs as an agent, such as `pi --agent` from pi-config, announces its own limits by emitting `pi-subagents:configure` with `{ allowedAgents?, maxDepth? }` on `pi.events`. The `subagent` tool then offers only those agents and counts `maxDepth` from that session's level.
 
 These are passed via environment variables (`PI_SUBAGENT_DEPTH`, `PI_SUBAGENT_MAX_DEPTH`, `PI_SUBAGENT_ALLOWED`). Child processes also receive `PI_SUBAGENT_NAME`, `PI_SUBAGENT_SYSTEM_PROMPT_MODE`, and `PI_SUBAGENT_SESSION` so runtime hooks can distinguish prompt mode and effective session mode.
 

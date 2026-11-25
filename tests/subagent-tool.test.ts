@@ -90,6 +90,76 @@ describe('registerSubagentTool', () => {
     expect(models).toEqual(['magpie/claude/sonnet', 'deepseek/deep-flash']);
   });
 
+  test('narrows the session agent allowlist to the inherited one', () => {
+    const offered = (allowedAgents: string[] | undefined, env: Record<string, string>) => {
+      const registered: any[] = [];
+      registerSubagentTool(
+        { registerTool: (tool: unknown) => registered.push(tool) },
+        { agents: [agent, { ...agent, name: 'writer' }], env, allowedAgents },
+      );
+      return registered[0].promptGuidelines?.[0];
+    };
+
+    expect(offered(['scout', 'writer'], {})).toBe('Available subagents: scout, writer');
+    // 会话代理声明的列表不能越过父进程通过环境变量留下的限制。
+    expect(offered(['scout', 'writer'], { PI_SUBAGENT_ALLOWED: 'scout' })).toBe(
+      'Available subagents: scout',
+    );
+    expect(offered(undefined, { PI_SUBAGENT_ALLOWED: 'writer' })).toBe(
+      'Available subagents: writer',
+    );
+    expect(offered([], {})).toBeUndefined();
+    // 父进程写出的空列表表示一个代理都不允许。
+    expect(offered(undefined, { PI_SUBAGENT_ALLOWED: '' })).toBeUndefined();
+    expect(offered(['scout'], { PI_SUBAGENT_ALLOWED: '' })).toBeUndefined();
+  });
+
+  test('limits delegation by the maxDepth of the session agent', async () => {
+    const scopeFor = (options: { maxDepth: number; env?: Record<string, string> }) => {
+      const registered: any[] = [];
+      let passed: { depth?: number; inheritedMaxDepth?: number } | undefined;
+      registerSubagentTool(
+        { registerTool: (tool: unknown) => registered.push(tool) },
+        {
+          agents: [agent],
+          env: options.env ?? {},
+          maxDepth: options.maxDepth,
+          run: async ({ depth, inheritedMaxDepth }) => {
+            passed = { depth, inheritedMaxDepth };
+            return { output: 'done' } as AgentResult;
+          },
+        },
+      );
+      const call = registered[0].execute(
+        'call-1',
+        { agent: 'scout', task: 'Scout' },
+        undefined,
+        undefined,
+        { cwd: '/repo' },
+      );
+      return { tool: registered[0], call, passed: () => passed };
+    };
+
+    // maxDepth: 0 的顶层代理不能派发，工具也不再列出可用代理。
+    const none = scopeFor({ maxDepth: 0 });
+    await expect(none.call).rejects.toThrow('delegation depth limit');
+    expect(none.tool.promptGuidelines).toBeUndefined();
+    expect(none.passed()).toBeUndefined();
+
+    // maxDepth: 1 允许一层：子进程在第 1 层，继承到的上限是第 0 层，所以不能再往下派发。
+    const one = scopeFor({ maxDepth: 1 });
+    await one.call;
+    expect(one.passed()).toEqual({ depth: 1, inheritedMaxDepth: 0 });
+
+    // 会话代理只能收紧继承来的上限，不能放宽。
+    const nested = scopeFor({
+      maxDepth: 5,
+      env: { PI_SUBAGENT_DEPTH: '1', PI_SUBAGENT_MAX_DEPTH: '1' },
+    });
+    await nested.call;
+    expect(nested.passed()).toEqual({ depth: 2, inheritedMaxDepth: 1 });
+  });
+
   test('does not register subagent when current process is past max depth', () => {
     const registered: any[] = [];
 
@@ -326,6 +396,7 @@ describe('registerSubagentTool', () => {
         env: { PI_SUBAGENT_DEPTH: '2', PI_SUBAGENT_MAX_DEPTH: '3' },
         run: async (options) => {
           expect(options.depth).toBe(3);
+          expect(options.inheritedMaxDepth).toBe(3);
           return {
             agent: 'scout',
             status: 'done',

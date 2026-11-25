@@ -3,7 +3,11 @@ import {
   ModelRuntime,
   withFileMutationQueue,
 } from '@earendil-works/pi-coding-agent';
-import { selectAgentModel } from '@johnnywu/pi-agent-profiles';
+import {
+  delegationDepthLimit,
+  narrowAllowedAgents,
+  selectAgentModel,
+} from '@johnnywu/pi-agent-profiles';
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -107,6 +111,8 @@ export interface RunSubagentOptions {
   signal?: AbortSignal;
   onProgress?: (progress: AgentProgress) => void;
   depth?: number;
+  /** 当前进程从祖先继承的深度上限（自身的 PI_SUBAGENT_MAX_DEPTH）；顶层会话没有。 */
+  inheritedMaxDepth?: number;
   availableAgents?: string[];
   tempRoot?: string;
   outputArchiveDir?: string;
@@ -122,20 +128,12 @@ const TASK_FILE_THRESHOLD = 8000;
 const OUTPUT_MAX_BYTES = 50 * 1024;
 const OUTPUT_MAX_LINES = 2000;
 
+/** 父进程可见的代理中，该代理的 allowedAgents 允许它继续派发的那些。 */
 export function availableSubagentsForAgent(
   agent: AgentConfig,
   candidateNames?: string[],
 ): string[] {
-  const names = candidateNames ?? agent.allowedAgents ?? [];
-  const allowed = agent.allowedAgents ? new Set(agent.allowedAgents) : undefined;
-  const seen = new Set<string>();
-
-  return names.filter((name) => {
-    if (seen.has(name)) return false;
-    if (allowed && !allowed.has(name)) return false;
-    seen.add(name);
-    return true;
-  });
+  return narrowAllowedAgents(candidateNames, agent.allowedAgents) ?? [];
 }
 
 const defaultFs: ExecutorFs = {
@@ -481,19 +479,21 @@ export async function runSubagent(options: RunSubagentOptions): Promise<AgentRes
     }
     args.push(buildTaskArgument(options.task, taskFilePath));
 
+    const depth = options.depth ?? 1;
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      PI_SUBAGENT_DEPTH: String(options.depth ?? 1),
-      PI_SUBAGENT_MAX_DEPTH: String(options.agent.maxDepth),
+      PI_SUBAGENT_DEPTH: String(depth),
+      PI_SUBAGENT_MAX_DEPTH: String(
+        delegationDepthLimit(depth, options.agent.maxDepth, options.inheritedMaxDepth),
+      ),
       PI_SUBAGENT_NAME: options.agent.name,
       PI_SUBAGENT_PROFILE: profilePath,
       PI_SUBAGENT_SYSTEM_PROMPT_MODE: options.agent.systemPromptMode,
       PI_SUBAGENT_SESSION: options.session?.effective ?? 'none',
     };
-    const visibleAgents = availableSubagentsForAgent(options.agent, options.availableAgents);
-    if (visibleAgents.length > 0) {
-      env.PI_SUBAGENT_ALLOWED = visibleAgents.join(',');
-    }
+    // 一个代理都不剩时也要写出空列表：变量缺失表示不限制，子进程还会继承本进程环境里的旧值。
+    const visibleAgents = narrowAllowedAgents(options.availableAgents, options.agent.allowedAgents);
+    if (visibleAgents) env.PI_SUBAGENT_ALLOWED = visibleAgents.join(',');
     env.PI_SUBAGENT_DEBUG = options.agent.debug ? 'true' : 'false';
 
     const processLine = (line: string) => {

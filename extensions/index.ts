@@ -1,5 +1,11 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { applyAgentProfile, type AgentProfile } from '@johnnywu/pi-agent-profiles';
+import {
+  applyAgentProfile,
+  delegationScopeEvent,
+  parseDelegationScope,
+  type AgentProfile,
+  type DelegationScope,
+} from '@johnnywu/pi-agent-profiles';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadAgentDefinitions } from './agent-loader.ts';
@@ -12,8 +18,8 @@ export default async function (pi: ExtensionAPI) {
     console.warn(`[pi-subagents] skipped ${warning.filePath}: ${warning.message}`);
   }
 
-  const registerScopedSubagentTool = (allowedAgents?: readonly string[]) => {
-    registerSubagentTool(pi, { agents: result.agents, allowedAgents });
+  const registerScopedSubagentTool = (scope: DelegationScope = {}) => {
+    registerSubagentTool(pi, { agents: result.agents, ...scope });
   };
 
   const profilePath = process.env.PI_SUBAGENT_PROFILE;
@@ -24,16 +30,9 @@ export default async function (pi: ExtensionAPI) {
     });
   }
 
-  pi.events.on('pi-subagents:configure', (configuration: unknown) => {
-    const allowedAgents =
-      configuration &&
-      typeof configuration === 'object' &&
-      Array.isArray((configuration as { allowedAgents?: unknown }).allowedAgents)
-        ? (configuration as { allowedAgents: unknown[] }).allowedAgents.filter(
-            (name): name is string => typeof name === 'string',
-          )
-        : undefined;
-    registerScopedSubagentTool(allowedAgents);
+  // `pi --agent`（pi-config 的 custom-agent）用这个事件声明当前会话代理的委派范围。
+  pi.events.on(delegationScopeEvent, (configuration: unknown) => {
+    registerScopedSubagentTool(parseDelegationScope(configuration));
   });
 
   if (process.env.PI_SUBAGENT_DEBUG === 'true') {

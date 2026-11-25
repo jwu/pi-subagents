@@ -39,8 +39,9 @@ describe('allowedAgentNames', () => {
     expect(allowedAgentNames({})).toBeUndefined();
   });
 
-  test('returns undefined when PI_SUBAGENT_ALLOWED is empty string', () => {
-    expect(allowedAgentNames({ PI_SUBAGENT_ALLOWED: '' })).toBeUndefined();
+  test('returns an empty set when PI_SUBAGENT_ALLOWED is an empty string', () => {
+    // 空值是父进程写出的“一个代理都不允许”，不能当成没有限制。
+    expect(allowedAgentNames({ PI_SUBAGENT_ALLOWED: '' })).toEqual(new Set());
   });
 
   test('returns an empty set when PI_SUBAGENT_ALLOWED contains only whitespace', () => {

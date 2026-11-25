@@ -117,7 +117,7 @@ You inspect code quickly.
     const files = new Map<string, string>([
       [
         '/project/replacer.md',
-        '---\nname: replacer\ntools: read\nsystemPrompt: replace\n---\nReplace instructions.\n\n<pi-runtime-tools />\n',
+        '---\nname: replacer\ntools: read\nsystemPrompt: replace\n---\nReplace instructions.\n',
       ],
     ]);
 
@@ -134,7 +134,7 @@ You inspect code quickly.
     expect(result.warnings).toEqual([]);
     expect(result.agents).toHaveLength(1);
     expect(result.agents[0].tools).toEqual(['read']);
-    expect(result.agents[0].prompt).not.toContain('<pi-runtime-tools />');
+    expect(result.agents[0].prompt).toBe('Replace instructions.\n');
   });
 
   test('parses replace-all system prompt mode', async () => {
@@ -252,7 +252,7 @@ You inspect code quickly.
     expect(result.agents[0].skills).toBeUndefined();
   });
 
-  test('does not parse skill (singular) field', async () => {
+  test('rejects the skill (singular) field as an unknown field', async () => {
     const files = new Map<string, string>([
       ['/global/singular.md', '---\nname: singular\nskill: tdd\n---\nSingular skill.\n'],
     ]);
@@ -267,7 +267,10 @@ You inspect code quickly.
       },
     });
 
-    expect(result.agents[0].skills).toBeUndefined();
+    expect(result.agents).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].filePath).toBe('/global/singular.md');
+    expect(result.warnings[0].message).toContain('unknown field: skill.');
   });
 
   test('project-local agents override global agents while first duplicate in one directory wins', async () => {

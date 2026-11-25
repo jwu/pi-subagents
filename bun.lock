@@ -5,7 +5,7 @@
     "": {
       "name": "@johnnywu/pi-subagents",
       "dependencies": {
-        "@johnnywu/pi-agent-profiles": "0.2.0",
+        "@johnnywu/pi-agent-profiles": "0.4.1",
       },
       "devDependencies": {
         "@commitlint/cli": "^20.5.3",
@@ -145,7 +145,7 @@
 
     "@isaacs/nonrecursive-glob-match": ["@isaacs/nonrecursive-glob-match@1.1.0", "", {}, "sha512-GPm/Dbvk5RLmhRnxXIa7nTpK0xtl4E0wj0MslsuNiJ1FIROU+2+9lgUC/dgF7Ey4QCWhfEsgxilMRMCdHPfDfw=="],
 
-    "@johnnywu/pi-agent-profiles": ["@johnnywu/pi-agent-profiles@0.2.0", "", { "peerDependencies": { "@earendil-works/pi-coding-agent": "^1.6.0" } }, "sha512-H1gdGlJNqoB/HoIwgxBt5FwakZBtrapei3Dnt2RBWF5pKuAg64OLwFUf5cAFLROj7WpPZOCe5s/QT7FKATSxmg=="],
+    "@johnnywu/pi-agent-profiles": ["@johnnywu/pi-agent-profiles@0.4.1", "", { "peerDependencies": { "@earendil-works/pi-coding-agent": "^1.6.0" } }, "sha512-qnQWlpJ8y8QxSxdHSDufUIvdITf2P+KjZ6QBKjdllyB/QdKFv+61dlTxhSvKCrk9on1bC86sgArwuZYiXJPS2g=="],
 
     "@octokit/auth-token": ["@octokit/auth-token@6.0.0", "", {}, "sha512-P4YJBPdPSpWTQ1NU4XYdvHvXJJDxM6YwpS0FZHRgP7YFkdVxsWcpWGy/NVqlAA7PcPCnMacXlRm1y2PFZRWL/w=="],
 

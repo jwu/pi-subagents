@@ -114,6 +114,45 @@ describe('runSubagent', () => {
     expect(calls[0].env.PI_SUBAGENT_DEBUG).toBe('false');
   });
 
+  test('limits the child max depth by its own budget and the inherited limit', async () => {
+    const maxDepthFor = async (options: {
+      maxDepth: number;
+      depth: number;
+      inheritedMaxDepth?: number;
+    }) => {
+      let env: NodeJS.ProcessEnv = {};
+      await runSubagent({
+        agent: { ...baseAgent, maxDepth: options.maxDepth },
+        task: 'List files',
+        cwd: '/repo',
+        depth: options.depth,
+        inheritedMaxDepth: options.inheritedMaxDepth,
+        resolvePi: async () => ({ command: 'pi', entryPoint: null }),
+        fs: {
+          makeTempDir: async () => '/tmp/pi-subagents-test/run-depth',
+          writeFile: async () => undefined,
+          removeDir: async () => undefined,
+        },
+        runner: async (invocation, handlers) => {
+          env = invocation.env;
+          handlers.stdout(
+            JSON.stringify({
+              type: 'message_end',
+              message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+            }) + '\n',
+          );
+          return { exitCode: 0 };
+        },
+      });
+      return env.PI_SUBAGENT_MAX_DEPTH;
+    };
+
+    // 第 2 层的代理按自己的 maxDepth 还能向下 10 层，但祖先只留了 1 层。
+    expect(await maxDepthFor({ maxDepth: 10, depth: 2, inheritedMaxDepth: 1 })).toBe('1');
+    // maxDepth 从代理自身层级算起：第 2 层的 maxDepth: 1 仍能派发一层。
+    expect(await maxDepthFor({ maxDepth: 1, depth: 2, inheritedMaxDepth: 10 })).toBe('2');
+  });
+
   test('runs pi with a forked session file when session is fork', async () => {
     const calls: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = [];
 
@@ -740,6 +779,54 @@ describe('runSubagent', () => {
     expect(
       JSON.parse(writes.find((write) => write.filePath.endsWith('agent-profile.json'))!.content),
     ).toMatchObject({ prompt: 'You scout code.' });
+  });
+
+  test('passes an empty allowed list when no agent is left to delegate to', async () => {
+    const allowedFor = async (options: {
+      allowedAgents?: string[];
+      availableAgents?: string[];
+    }) => {
+      let env: NodeJS.ProcessEnv = {};
+      await runSubagent({
+        agent: { ...baseAgent, allowedAgents: options.allowedAgents },
+        task: 'Delegate',
+        cwd: '/repo',
+        availableAgents: options.availableAgents,
+        resolvePi: async () => ({ command: 'pi', entryPoint: null }),
+        fs: {
+          makeTempDir: async () => '/tmp/pi-subagents-test/run-empty-allowed',
+          writeFile: async () => undefined,
+          removeDir: async () => undefined,
+        },
+        runner: async (invocation, handlers) => {
+          env = invocation.env;
+          handlers.stdout(
+            JSON.stringify({
+              type: 'message_end',
+              message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+            }) + '\n',
+          );
+          return { exitCode: 0 };
+        },
+      });
+      return env.PI_SUBAGENT_ALLOWED;
+    };
+
+    const inherited = process.env.PI_SUBAGENT_ALLOWED;
+    try {
+      // 代理只允许不存在的名字：子进程必须拿到空列表，而不是没有限制。
+      delete process.env.PI_SUBAGENT_ALLOWED;
+      expect(
+        await allowedFor({ allowedAgents: ['ghost'], availableAgents: ['scout', 'worker'] }),
+      ).toBe('');
+      // 本进程自身受限时，空列表要覆盖继承来的旧值。
+      process.env.PI_SUBAGENT_ALLOWED = 'scout,worker';
+      expect(await allowedFor({ allowedAgents: ['ghost'], availableAgents: ['scout'] })).toBe('');
+      expect(await allowedFor({ availableAgents: [] })).toBe('');
+    } finally {
+      if (inherited === undefined) delete process.env.PI_SUBAGENT_ALLOWED;
+      else process.env.PI_SUBAGENT_ALLOWED = inherited;
+    }
   });
 
   test('uses append prompt mode, writes long tasks to a temp file, and cleans up', async () => {

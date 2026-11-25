@@ -8,7 +8,11 @@ import {
   type ThemeColor,
 } from '@earendil-works/pi-coding-agent';
 import { Container, Markdown, Spacer, Text } from '@earendil-works/pi-tui';
-import { selectAgentModel } from '@johnnywu/pi-agent-profiles';
+import {
+  delegationDepthLimit,
+  narrowAllowedAgents,
+  selectAgentModel,
+} from '@johnnywu/pi-agent-profiles';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import type { AgentConfig } from './agent-loader.ts';
@@ -30,7 +34,12 @@ import {
   type SubagentResultLine,
 } from './subagent-render.ts';
 import { numberArg, preview, shortenPath, stringArg } from './tool-args.ts';
-import { allowedAgentNames, isPastMaxDepth, type RecursionEnv } from './env-utils.ts';
+import {
+  allowedAgentNames,
+  isPastMaxDepth,
+  parseEnvNumber,
+  type RecursionEnv,
+} from './env-utils.ts';
 
 const SubagentParams = {
   type: 'object',
@@ -67,8 +76,10 @@ export interface RegisterSubagentToolOptions {
   agents: AgentConfig[];
   run?: typeof runSubagent;
   env?: RecursionEnv;
-  /** Explicit allowlist for the current session. An empty list disables delegation. */
+  /** 当前会话代理声明的允许列表，与继承来的列表取交集；空列表表示不能派发。 */
   allowedAgents?: readonly string[];
+  /** 当前会话代理（`pi --agent`）的 maxDepth，从本进程所在层算起；会收紧继承来的上限。 */
+  maxDepth?: number;
   agentDir?: string;
 }
 
@@ -390,11 +401,23 @@ export function registerSubagentTool(
   const env: RecursionEnv = options.env ?? process.env;
   if (isPastMaxDepth(env)) return;
 
-  const allowed =
-    options.allowedAgents === undefined ? allowedAgentNames(env) : new Set(options.allowedAgents);
-  const agents = allowed
-    ? options.agents.filter((candidate) => allowed.has(candidate.name))
-    : options.agents;
+  const depth = parseEnvNumber(env.PI_SUBAGENT_DEPTH) ?? 0;
+  const inheritedMaxDepth = parseEnvNumber(env.PI_SUBAGENT_MAX_DEPTH);
+  const depthLimit = delegationDepthLimit(depth, options.maxDepth, inheritedMaxDepth);
+  // 工具可能已经注册过且无法撤销，所以到达上限时重新注册为没有可用代理的版本。
+  const atDepthLimit = depthLimit !== undefined && depth > depthLimit;
+
+  const inheritedAllowed = allowedAgentNames(env);
+  const allowedNames = narrowAllowedAgents(
+    options.allowedAgents,
+    inheritedAllowed && [...inheritedAllowed],
+  );
+  const allowed = allowedNames && new Set(allowedNames);
+  const agents = atDepthLimit
+    ? []
+    : allowed
+      ? options.agents.filter((candidate) => allowed.has(candidate.name))
+      : options.agents;
   const runner = options.run ?? runSubagent;
   const progressCoordinator = new ProgressUpdateCoordinator();
 
@@ -426,6 +449,7 @@ export function registerSubagentTool(
       onUpdate: AgentToolUpdateCallback<AgentProgress> | undefined,
       ctx: ExtensionContext,
     ) {
+      if (atDepthLimit) throw new Error('This agent has reached its delegation depth limit.');
       const agent = agents.find((candidate) => candidate.name === params.agent);
       if (!agent) {
         throw new Error(
@@ -443,7 +467,8 @@ export function registerSubagentTool(
           task: params.task,
           cwd: childCwd,
           signal,
-          depth: Number(env.PI_SUBAGENT_DEPTH ?? '0') + 1,
+          depth: depth + 1,
+          inheritedMaxDepth: depthLimit,
           availableAgents: availableSubagentsForAgent(agent, availableSubagents),
           agentDir: options.agentDir,
           session,

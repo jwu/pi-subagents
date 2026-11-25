@@ -19,7 +19,8 @@ export function parseEnvNumber(value: string | undefined): number | undefined {
 
 export function allowedAgentNames(env: RecursionEnv): Set<string> | undefined {
   const raw = env?.PI_SUBAGENT_ALLOWED;
-  if (!raw) return undefined;
+  // 变量缺失表示不限制；空值表示一个代理都不允许。
+  if (raw === undefined) return undefined;
   return new Set(
     raw
       .split(',')
