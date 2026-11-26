@@ -1,3 +1,10 @@
+## [2.6.1](https://github.com/jwu/pi-subagents/compare/v2.6.0...v2.6.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* show agent definition warnings in the Pi UI ([c39d419](https://github.com/jwu/pi-subagents/commit/c39d419a1b7a8f90631102a907b729dc1976844c))
+
 # [2.6.0](https://github.com/jwu/pi-subagents/compare/v2.5.0...v2.6.0) (2026-11-25)
 
 
