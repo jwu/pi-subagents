@@ -14,9 +14,16 @@ import { registerSubagentTool } from './subagent-tool.ts';
 export default async function (pi: ExtensionAPI) {
   const result = await loadAgentDefinitions({ cwd: process.cwd() });
 
-  for (const warning of result.warnings) {
-    console.warn(`[pi-subagents] skipped ${warning.filePath}: ${warning.message}`);
-  }
+  // 工厂函数运行在 TUI 启动之前，直接写终端会被全屏界面覆盖，所以等到 session_start 再提示。
+  const warnings = result.warnings.map(
+    (warning) => `[pi-subagents] skipped ${warning.filePath}: ${warning.message}`,
+  );
+  pi.on('session_start', (_event, ctx) => {
+    for (const message of warnings.splice(0)) {
+      if (ctx.hasUI) ctx.ui.notify(message, 'warning');
+      else console.warn(message);
+    }
+  });
 
   const registerScopedSubagentTool = (scope: DelegationScope = {}) => {
     registerSubagentTool(pi, { agents: result.agents, ...scope });
